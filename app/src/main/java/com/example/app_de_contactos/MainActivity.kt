@@ -14,13 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,8 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +42,7 @@ val WhatsAppGreen = Color(0xFF00A884)
 val ChipSelectedBg = Color(0xFF0C3A2D)
 val BottomBarBg = Color(0xFF0B141A)
 val BorderDark = Color(0xFF2A3942)
+val ErrorRed = Color(0xFFFF5555)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,9 +107,9 @@ fun ContactosAppTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -161,23 +157,28 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Campo Correo Electrónico
+                // Campo 1: Nombre de usuario
                 OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Correo Electrónico", color = TextSecondary) },
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Nombre de usuario", color = TextSecondary) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Outlined.Email,
-                            contentDescription = "Correo",
+                            imageVector = Icons.Outlined.Person,
+                            contentDescription = "Nombre de usuario",
                             tint = TextSecondary
                         )
                     },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    isError = errorMessage != null && username.isBlank(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = WhatsAppGreen,
                         unfocusedBorderColor = BorderDark,
+                        errorBorderColor = ErrorRed,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
                     ),
@@ -186,45 +187,58 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Campo Contraseña
+                // Campo 2: Número de teléfono
                 OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Contraseña", color = TextSecondary) },
+                    value = phone,
+                    onValueChange = {
+                        phone = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Número de teléfono", color = TextSecondary) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Outlined.Lock,
-                            contentDescription = "Contraseña",
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = "Número de teléfono",
                             tint = TextSecondary
                         )
                     },
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = "Mostrar u ocultar contraseña",
-                                tint = TextSecondary
-                            )
-                        }
-                    },
                     singleLine = true,
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = errorMessage != null && phone.isBlank(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = WhatsAppGreen,
                         unfocusedBorderColor = BorderDark,
+                        errorBorderColor = ErrorRed,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                // Mensaje de error si algún campo está vacío o hay un error
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = ErrorRed,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Botón Iniciar Sesión (Verde)
                 Button(
                     onClick = {
-                        onLoginSuccess()
+                        if (username.isBlank() || phone.isBlank()) {
+                            errorMessage = "Por favor, debes rellenar todos los espacios."
+                        } else {
+                            errorMessage = null
+                            onLoginSuccess()
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
                     shape = RoundedCornerShape(10.dp),
@@ -259,9 +273,11 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Botón Continuar con Google
+                // Botón Continuar con Google (bloqueado/solo información)
                 OutlinedButton(
-                    onClick = { onLoginSuccess() },
+                    onClick = {
+                        errorMessage = "Debes ingresar con tu Nombre de usuario y Número de teléfono."
+                    },
                     shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(1.dp, BorderDark),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
