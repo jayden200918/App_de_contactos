@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "646919694634",
+    "project_id": "app-de-contacto",
+    "storage_bucket": "app-de-contacto.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:646919694634:android:4ac0b853d5b872e9e31653",
+        "android_client_info": {
+          "package_name": "com.example.app_de_contactos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCz_QVuHhuNePHesHXqgvvSVKkpkC6_vFo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
