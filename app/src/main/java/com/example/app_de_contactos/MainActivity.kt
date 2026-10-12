@@ -12,9 +12,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Email
@@ -63,7 +65,9 @@ class MainActivity : ComponentActivity() {
                         onLoginSuccess = { isLoggedIn = true }
                     )
                 } else {
-                    MainScreen()
+                    MainScreen(
+                        onLogout = { isLoggedIn = false }
+                    )
                 }
             }
         }
@@ -291,8 +295,9 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(onLogout: () -> Unit) {
     var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Chats, 1: Notas, 2: Llamadas
+    var showMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -304,6 +309,45 @@ fun MainScreen() {
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.AccountCircle,
+                                contentDescription = "Foto de perfil",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(CardBg)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Cerrar sesión",
+                                        color = Color(0xFFFF5555), // Rojo
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
+                                        contentDescription = "Cerrar sesión",
+                                        tint = Color(0xFFFF5555)
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = DarkBg
