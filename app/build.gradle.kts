@@ -35,6 +35,8 @@ android {
 dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.database)
 
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
