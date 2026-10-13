@@ -7,13 +7,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Description
@@ -73,18 +73,6 @@ class MainActivity : ComponentActivity() {
         try {
             val app = FirebaseApp.getInstance()
             Log.d("FirebaseCheck", "¡Firebase conectado correctamente!: ${app.name}")
-
-            // Firebase Firestore
-            val db = FirebaseFirestore.getInstance()
-            db.collection("contactos")
-                .add(hashMapOf("nombre" to "Contacto Compose", "telefono" to "123456789"))
-                .addOnSuccessListener { Log.d("FirebaseCheck", "Firestore OK: ${it.id}") }
-
-            // Firebase Realtime Database
-            val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
-            rtdb.getReference("contactos_prueba").push()
-                .setValue(hashMapOf("nombre" to "Contacto Compose RTDB"))
-                .addOnSuccessListener { Log.d("FirebaseCheck", "RTDB OK") }
         } catch (e: Exception) {
             Log.e("FirebaseCheck", "Error Firebase", e)
         }
@@ -107,20 +95,24 @@ fun ContactosAppTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
+    var isRegisterMode by remember { mutableStateOf(false) } // false: Iniciar Sesión, true: Registrarse
     var username by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+
+    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DarkBg)
     ) {
-        // Franja superior en tema oscuro con acento verde
+        // Franja superior
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.35f)
+                .fillMaxHeight(0.32f)
                 .background(Color(0xFF0F1A1C)),
             contentAlignment = Alignment.Center
         ) {
@@ -133,14 +125,14 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Bienvenido de nuevo",
+                    text = if (isRegisterMode) "Crea tu cuenta en Firebase" else "Bienvenido de nuevo",
                     fontSize = 14.sp,
                     color = WhatsAppGreen
                 )
             }
         }
 
-        // Tarjeta flotante central en tema oscuro
+        // Tarjeta flotante central
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -157,6 +149,15 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Text(
+                    text = if (isRegisterMode) "REGISTRARSE" else "INICIAR SESIÓN",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
                 // Campo 1: Nombre de usuario
                 OutlinedTextField(
                     value = username,
@@ -215,7 +216,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Mensaje de error si algún campo está vacío o hay un error
+                // Mensajes de respuesta (Error o Éxito)
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -228,82 +229,166 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                if (successMessage != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = successMessage!!,
+                        color = WhatsAppGreen,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
-                // Botón Iniciar Sesión (Verde)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Botón Principal (Iniciar Sesión o Registrarse)
                 Button(
                     onClick = {
-                        if (username.isBlank() || phone.isBlank()) {
+                        val cleanUser = username.trim()
+                        val cleanPhone = phone.trim()
+
+                        if (cleanUser.isBlank() || cleanPhone.isBlank()) {
                             errorMessage = "Por favor, debes rellenar todos los espacios."
+                            return@Button
+                        }
+
+                        errorMessage = null
+                        successMessage = null
+                        isLoading = true
+
+                        val db = FirebaseFirestore.getInstance()
+                        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+
+                        val userMap = hashMapOf(
+                            "nombre" to cleanUser,
+                            "telefono" to cleanPhone
+                        )
+
+                        if (isRegisterMode) {
+                            // MODO REGISTRO: Guardar en Realtime Database (y secundario Firestore)
+                            rtdb.getReference("usuarios").child(cleanPhone).setValue(userMap)
+                                .addOnSuccessListener {
+                                    try {
+                                        db.collection("usuarios").document(cleanPhone).set(userMap)
+                                    } catch (_: Exception) {}
+
+                                    isLoading = false
+                                    isRegisterMode = false
+                                    successMessage = "¡Registro exitoso! Ya puedes iniciar sesión."
+                                }
+                                .addOnFailureListener { e ->
+                                    // Si falla RTDB, intentar en Firestore
+                                    db.collection("usuarios").document(cleanPhone).set(userMap)
+                                        .addOnSuccessListener {
+                                            isLoading = false
+                                            isRegisterMode = false
+                                            successMessage = "¡Registro exitoso! Ya puedes iniciar sesión."
+                                        }
+                                        .addOnFailureListener { e2 ->
+                                            isLoading = false
+                                            errorMessage = "Error al registrar: ${e2.localizedMessage ?: e.localizedMessage}"
+                                        }
+                                }
                         } else {
-                            errorMessage = null
-                            onLoginSuccess()
+                            // MODO INICIO DE SESIÓN: Buscar primero en Realtime Database
+                            rtdb.getReference("usuarios").child(cleanPhone).get()
+                                .addOnSuccessListener { snapshot ->
+                                    if (snapshot.exists()) {
+                                        val nombreGuardado = snapshot.child("nombre").getValue(String::class.java) ?: ""
+                                        if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
+                                            isLoading = false
+                                            onLoginSuccess()
+                                        } else {
+                                            isLoading = false
+                                            errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                        }
+                                    } else {
+                                        // Buscar en Firestore por si acaso estuvo registrado allí
+                                        db.collection("usuarios").document(cleanPhone).get()
+                                            .addOnSuccessListener { document ->
+                                                isLoading = false
+                                                if (document.exists()) {
+                                                    val nombreGuardado = document.getString("nombre") ?: ""
+                                                    if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
+                                                        onLoginSuccess()
+                                                    } else {
+                                                        errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                                    }
+                                                } else {
+                                                    errorMessage = "Usuario no registrado. Por favor, haz clic en REGÍSTRATE."
+                                                }
+                                            }
+                                            .addOnFailureListener {
+                                                isLoading = false
+                                                errorMessage = "Usuario no registrado. Por favor, haz clic en REGÍSTRATE."
+                                            }
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    // Si falla RTDB, intentar buscar en Firestore
+                                    db.collection("usuarios").document(cleanPhone).get()
+                                        .addOnSuccessListener { document ->
+                                            isLoading = false
+                                            if (document.exists()) {
+                                                val nombreGuardado = document.getString("nombre") ?: ""
+                                                if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
+                                                    onLoginSuccess()
+                                                } else {
+                                                    errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                                }
+                                            } else {
+                                                errorMessage = "Usuario no registrado. Por favor, haz clic en REGÍSTRATE."
+                                            }
+                                        }
+                                        .addOnFailureListener { e ->
+                                            isLoading = false
+                                            errorMessage = "Error de conexión: ${e.localizedMessage}"
+                                        }
+                                }
                         }
                     },
+                    enabled = !isLoading,
                     colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp)
                 ) {
-                    Text(
-                        text = "INICIAR SESIÓN",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = Color.Black
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = if (isRegisterMode) "REGISTRARSE EN FIREBASE" else "INICIAR SESIÓN",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color.Black
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // Texto ¿No tienes cuenta? Registrate
+                // Cambiar entre Iniciar Sesión y Registrarse
                 Text(
-                    text = "¿NO TIENES CUENTA?\nREGÍSTRATE",
+                    text = if (isRegisterMode) "¿YA TIENES CUENTA?\nINICIA SESIÓN" else "¿NO TIENES CUENTA?\nREGÍSTRATE",
                     color = WhatsAppGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
+                        .clickable {
+                            isRegisterMode = !isRegisterMode
+                            errorMessage = null
+                            successMessage = null
+                        }
                         .padding(vertical = 4.dp)
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                HorizontalDivider(color = BorderDark, thickness = 1.dp)
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Botón Continuar con Google (bloqueado/solo información)
-                OutlinedButton(
-                    onClick = {
-                        errorMessage = "Debes ingresar con tu Nombre de usuario y Número de teléfono."
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, BorderDark),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.Send,
-                            contentDescription = "Google",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "CONTINUAR CON GOOGLE",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = TextPrimary
-                        )
-                    }
-                }
             }
         }
     }
