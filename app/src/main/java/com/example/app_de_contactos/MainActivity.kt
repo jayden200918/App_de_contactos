@@ -13,21 +13,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,12 +69,36 @@ val BottomBarBg = Color(0xFF0B141A)
 val BorderDark = Color(0xFF2A3942)
 val ErrorRed = Color(0xFFFF5555)
 
+// Categorías de notas disponibles
+data class CategoriaNota(
+    val nombre: String,
+    val color: Color,
+    val hex: String
+)
+
+val categoriasDisponibles = listOf(
+    CategoriaNota("Personal", WhatsAppGreen, "#00A884"),
+    CategoriaNota("Trabajo", Color(0xFF3498DB), "#3498DB"),
+    CategoriaNota("Importante", Color(0xFFE67E22), "#E67E22"),
+    CategoriaNota("Idea", Color(0xFF9B59B6), "#9B59B6")
+)
+
+fun parseHexColor(hex: String, fallback: Color = WhatsAppGreen): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(hex))
+    } catch (_: Exception) {
+        fallback
+    }
+}
+
 // Modelo de datos para las notas
 data class Nota(
     val id: String = "",
     val titulo: String = "",
     val descripcion: String = "",
-    val fecha: String = ""
+    val fecha: String = "",
+    val categoria: String = "Personal",
+    val colorHex: String = "#00A884"
 )
 
 // Gestor de sesión persistente usando SharedPreferences
@@ -886,8 +916,20 @@ fun NotasContent(userPhone: String) {
                     val titulo = child.child("titulo").getValue(String::class.java) ?: ""
                     val descripcion = child.child("descripcion").getValue(String::class.java) ?: ""
                     val fecha = child.child("fecha").getValue(String::class.java) ?: ""
+                    val categoria = child.child("categoria").getValue(String::class.java) ?: "Personal"
+                    val colorHex = child.child("colorHex").getValue(String::class.java) ?: "#00A884"
+
                     if (id.isNotBlank()) {
-                        list.add(Nota(id = id, titulo = titulo, descripcion = descripcion, fecha = fecha))
+                        list.add(
+                            Nota(
+                                id = id,
+                                titulo = titulo,
+                                descripcion = descripcion,
+                                fecha = fecha,
+                                categoria = categoria,
+                                colorHex = colorHex
+                            )
+                        )
                     }
                 }
                 notas.clear()
@@ -907,13 +949,13 @@ fun NotasContent(userPhone: String) {
         }
     }
 
-    // Diálogo para agregar nota
+    // Formulario mejorado para agregar nota
     if (showAddDialog) {
         AgregarNotaDialog(
             onDismiss = { showAddDialog = false },
-            onSave = { titulo, descripcion ->
+            onSave = { titulo, descripcion, categoria, colorHex ->
                 showAddDialog = false
-                guardarNotaEnFirebase(cleanPhone, titulo, descripcion)
+                guardarNotaEnFirebase(cleanPhone, titulo, descripcion, categoria, colorHex)
             }
         )
     }
@@ -986,7 +1028,7 @@ fun NotasContent(userPhone: String) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Presiona el botón '+' para agregar una nueva nota con título y descripción.",
+                    text = "Presiona el botón '+' para crear tu primera nota organizada por categorías.",
                     fontSize = 14.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center
@@ -1033,6 +1075,8 @@ fun NotaItemCard(
     nota: Nota,
     onDeleteClick: () -> Unit
 ) {
+    val tagColor = parseHexColor(nota.colorHex)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1040,58 +1084,87 @@ fun NotaItemCard(
         border = BorderStroke(1.dp, BorderDark),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // Franja de color indicador de categoría
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .fillMaxHeight()
+                    .background(tagColor)
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
+                // Fila superior: Chip de categoría + Botón de eliminar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = tagColor.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, tagColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = nota.categoria,
+                            color = tagColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Eliminar nota",
+                            tint = ErrorRed,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Título de la nota
                 Text(
                     text = nota.titulo,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = "Eliminar nota",
-                        tint = ErrorRed,
-                        modifier = Modifier.size(20.dp)
+                // Descripción de la nota
+                if (nota.descripcion.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = nota.descripcion,
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        lineHeight = 20.sp
                     )
                 }
-            }
 
-            if (nota.descripcion.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = nota.descripcion,
-                    fontSize = 14.sp,
-                    color = TextSecondary,
-                    lineHeight = 20.sp
-                )
-            }
-
-            if (nota.fecha.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = nota.fecha,
-                    fontSize = 11.sp,
-                    color = Color(0xFF667781),
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Fecha
+                if (nota.fecha.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = nota.fecha,
+                        fontSize = 11.sp,
+                        color = Color(0xFF667781),
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
@@ -1100,41 +1173,132 @@ fun NotaItemCard(
 @Composable
 fun AgregarNotaDialog(
     onDismiss: () -> Unit,
-    onSave: (titulo: String, descripcion: String) -> Unit
+    onSave: (titulo: String, descripcion: String, categoria: String, colorHex: String) -> Unit
 ) {
     var titulo by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(categoriasDisponibles.first()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val maxTitleLength = 50
+    val maxDescLength = 500
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         containerColor = CardBg,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Outlined.EditNote,
-                    contentDescription = null,
-                    tint = WhatsAppGreen,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Nueva Nota",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(WhatsAppGreen.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.EditNote,
+                            contentDescription = null,
+                            tint = WhatsAppGreen,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Nueva Nota",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Campo Título
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Selector de Categoría
+                Text(
+                    text = "Categoría:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(categoriasDisponibles) { cat ->
+                        val isSelected = cat.nombre == selectedCategory.nombre
+                        Surface(
+                            onClick = { selectedCategory = cat },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF16232B),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) cat.color else BorderDark
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(cat.color, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = cat.nombre,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) TextPrimary else TextSecondary
+                                )
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Outlined.Check,
+                                        contentDescription = null,
+                                        tint = cat.color,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Campo 1: Título de la Nota
                 OutlinedTextField(
                     value = titulo,
                     onValueChange = {
-                        titulo = it
-                        if (errorMessage != null) errorMessage = null
+                        if (it.length <= maxTitleLength) {
+                            titulo = it
+                            if (errorMessage != null) errorMessage = null
+                        }
                     },
                     label = { Text("Título de la nota", color = TextSecondary) },
                     leadingIcon = {
@@ -1144,9 +1308,17 @@ fun AgregarNotaDialog(
                             tint = TextSecondary
                         )
                     },
+                    trailingIcon = {
+                        Text(
+                            text = "${titulo.length}/$maxTitleLength",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = selectedCategory.color,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1156,14 +1328,16 @@ fun AgregarNotaDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Campo Descripción
+                // Campo 2: Descripción de la Nota
                 OutlinedTextField(
                     value = descripcion,
                     onValueChange = {
-                        descripcion = it
-                        if (errorMessage != null) errorMessage = null
+                        if (it.length <= maxDescLength) {
+                            descripcion = it
+                            if (errorMessage != null) errorMessage = null
+                        }
                     },
-                    label = { Text("Descripción", color = TextSecondary) },
+                    label = { Text("Descripción o contenido", color = TextSecondary) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Outlined.Description,
@@ -1171,10 +1345,18 @@ fun AgregarNotaDialog(
                             tint = TextSecondary
                         )
                     },
+                    trailingIcon = {
+                        Text(
+                            text = "${descripcion.length}/$maxDescLength",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    },
                     minLines = 3,
-                    maxLines = 5,
+                    maxLines = 6,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = selectedCategory.color,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1200,16 +1382,16 @@ fun AgregarNotaDialog(
                     val cleanDesc = descripcion.trim()
 
                     if (cleanTitle.isBlank() && cleanDesc.isBlank()) {
-                        errorMessage = "Ingresa al menos un título o descripción."
+                        errorMessage = "Por favor, ingresa al menos un título o una descripción."
                         return@Button
                     }
 
-                    onSave(cleanTitle, cleanDesc)
+                    onSave(cleanTitle, cleanDesc, selectedCategory.nombre, selectedCategory.hex)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                colors = ButtonDefaults.buttonColors(containerColor = selectedCategory.color),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Guardar", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Guardar Nota", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1225,7 +1407,13 @@ fun AgregarNotaDialog(
 }
 
 // Funciones auxiliares para sincronizar notas con Firebase
-private fun guardarNotaEnFirebase(phone: String, titulo: String, descripcion: String) {
+private fun guardarNotaEnFirebase(
+    phone: String,
+    titulo: String,
+    descripcion: String,
+    categoria: String,
+    colorHex: String
+) {
     if (phone.isBlank()) return
 
     val dateStr = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date())
@@ -1237,7 +1425,9 @@ private fun guardarNotaEnFirebase(phone: String, titulo: String, descripcion: St
         "id" to noteId,
         "titulo" to titulo,
         "descripcion" to descripcion,
-        "fecha" to dateStr
+        "fecha" to dateStr,
+        "categoria" to categoria,
+        "colorHex" to colorHex
     )
 
     // Guardar en Realtime Database
