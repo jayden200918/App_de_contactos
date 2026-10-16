@@ -12,17 +12,23 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,12 +38,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // Colores del tema oscuro de la app
 val DarkBg = Color(0xFF0B141A)
@@ -49,6 +62,14 @@ val ChipSelectedBg = Color(0xFF0C3A2D)
 val BottomBarBg = Color(0xFF0B141A)
 val BorderDark = Color(0xFF2A3942)
 val ErrorRed = Color(0xFFFF5555)
+
+// Modelo de datos para las notas
+data class Nota(
+    val id: String = "",
+    val titulo: String = "",
+    val descripcion: String = "",
+    val fecha: String = ""
+)
 
 // Gestor de sesión persistente usando SharedPreferences
 object SessionManager {
@@ -471,7 +492,6 @@ fun MainScreen(onLogout: () -> Unit) {
             userPhone = userPhone,
             onDismiss = { showLogoutDialog = false },
             onConfirm = {
-                showLogoutDialog = false
                 onLogout()
             }
         )
@@ -665,7 +685,7 @@ fun MainScreen(onLogout: () -> Unit) {
         ) {
             when (selectedBottomTab) {
                 0 -> ChatsContent()
-                1 -> NotasContent()
+                1 -> NotasContent(userPhone = userPhone)
                 2 -> LlamadasContent()
             }
         }
@@ -840,35 +860,416 @@ fun ChatsContent() {
 }
 
 @Composable
-fun NotasContent() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Description,
-            contentDescription = null,
-            tint = WhatsAppGreen,
-            modifier = Modifier.size(64.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Pestaña de Notas",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Aquí puedes guardar y consultar tus notas personales.",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            textAlign = TextAlign.Center
+fun NotasContent(userPhone: String) {
+    val notas = remember { mutableStateListOf<Nota>() }
+    var isLoading by remember { mutableStateOf(true) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var notaToDelete by remember { mutableStateOf<Nota?>(null) }
+
+    val cleanPhone = userPhone.trim()
+
+    // Escuchar notas en tiempo real desde Firebase Realtime Database
+    DisposableEffect(cleanPhone) {
+        if (cleanPhone.isBlank()) {
+            isLoading = false
+            return@DisposableEffect onDispose {}
+        }
+
+        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+        val ref = rtdb.getReference("usuarios").child(cleanPhone).child("notas")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<Nota>()
+                for (child in snapshot.children) {
+                    val id = child.key ?: ""
+                    val titulo = child.child("titulo").getValue(String::class.java) ?: ""
+                    val descripcion = child.child("descripcion").getValue(String::class.java) ?: ""
+                    val fecha = child.child("fecha").getValue(String::class.java) ?: ""
+                    if (id.isNotBlank()) {
+                        list.add(Nota(id = id, titulo = titulo, descripcion = descripcion, fecha = fecha))
+                    }
+                }
+                notas.clear()
+                notas.addAll(list.reversed()) // Mostrar las más recientes primero
+                isLoading = false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                isLoading = false
+            }
+        }
+
+        ref.addValueEventListener(listener)
+
+        onDispose {
+            ref.removeEventListener(listener)
+        }
+    }
+
+    // Diálogo para agregar nota
+    if (showAddDialog) {
+        AgregarNotaDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { titulo, descripcion ->
+                showAddDialog = false
+                guardarNotaEnFirebase(cleanPhone, titulo, descripcion)
+            }
         )
     }
+
+    // Diálogo para confirmar eliminación de nota
+    if (notaToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { notaToDelete = null },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = CardBg,
+            title = {
+                Text("¿Eliminar nota?", color = TextPrimary, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Esta nota se eliminará permanentemente.", color = TextSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = notaToDelete
+                        notaToDelete = null
+                        if (target != null) {
+                            eliminarNotaDeFirebase(cleanPhone, target.id)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                ) {
+                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { notaToDelete = null },
+                    border = BorderStroke(1.dp, BorderDark)
+                ) {
+                    Text("Cancelar", color = TextPrimary)
+                }
+            }
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = WhatsAppGreen)
+            }
+        } else if (notas.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.EditNote,
+                    contentDescription = null,
+                    tint = WhatsAppGreen,
+                    modifier = Modifier.size(72.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "No tienes notas creadas",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Presiona el botón '+' para agregar una nueva nota con título y descripción.",
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                items(notas, key = { it.id }) { nota ->
+                    NotaItemCard(
+                        nota = nota,
+                        onDeleteClick = { notaToDelete = nota }
+                    )
+                }
+            }
+        }
+
+        // Botón Flotante (FAB) para Agregar Nota
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            containerColor = WhatsAppGreen,
+            contentColor = Color.Black,
+            shape = CircleShape,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Agregar nota",
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun NotaItemCard(
+    nota: Nota,
+    onDeleteClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = nota.titulo,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = "Eliminar nota",
+                        tint = ErrorRed,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            if (nota.descripcion.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = nota.descripcion,
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    lineHeight = 20.sp
+                )
+            }
+
+            if (nota.fecha.isNotBlank()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = nota.fecha,
+                    fontSize = 11.sp,
+                    color = Color(0xFF667781),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AgregarNotaDialog(
+    onDismiss: () -> Unit,
+    onSave: (titulo: String, descripcion: String) -> Unit
+) {
+    var titulo by remember { mutableStateOf("") }
+    var descripcion by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = CardBg,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.EditNote,
+                    contentDescription = null,
+                    tint = WhatsAppGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Nueva Nota",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Campo Título
+                OutlinedTextField(
+                    value = titulo,
+                    onValueChange = {
+                        titulo = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Título de la nota", color = TextSecondary) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Title,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Campo Descripción
+                OutlinedTextField(
+                    value = descripcion,
+                    onValueChange = {
+                        descripcion = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Descripción", color = TextSecondary) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Description,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    minLines = 3,
+                    maxLines = 5,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = ErrorRed,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cleanTitle = titulo.trim()
+                    val cleanDesc = descripcion.trim()
+
+                    if (cleanTitle.isBlank() && cleanDesc.isBlank()) {
+                        errorMessage = "Ingresa al menos un título o descripción."
+                        return@Button
+                    }
+
+                    onSave(cleanTitle, cleanDesc)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Guardar", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Cancelar", color = TextPrimary)
+            }
+        }
+    )
+}
+
+// Funciones auxiliares para sincronizar notas con Firebase
+private fun guardarNotaEnFirebase(phone: String, titulo: String, descripcion: String) {
+    if (phone.isBlank()) return
+
+    val dateStr = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date())
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val notesRef = rtdb.getReference("usuarios").child(phone).child("notas")
+    val noteId = notesRef.push().key ?: System.currentTimeMillis().toString()
+
+    val noteMap = hashMapOf(
+        "id" to noteId,
+        "titulo" to titulo,
+        "descripcion" to descripcion,
+        "fecha" to dateStr
+    )
+
+    // Guardar en Realtime Database
+    notesRef.child(noteId).setValue(noteMap)
+        .addOnSuccessListener {
+            // Guardar también en Firestore como respaldo
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(phone)
+                    .collection("notas")
+                    .document(noteId)
+                    .set(noteMap)
+            } catch (_: Exception) {}
+        }
+}
+
+private fun eliminarNotaDeFirebase(phone: String, noteId: String) {
+    if (phone.isBlank() || noteId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    rtdb.getReference("usuarios").child(phone).child("notas").child(noteId).removeValue()
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(phone)
+                    .collection("notas")
+                    .document(noteId)
+                    .delete()
+            } catch (_: Exception) {}
+        }
 }
 
 @Composable
