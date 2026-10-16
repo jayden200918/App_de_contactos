@@ -6,10 +6,13 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -97,23 +100,29 @@ class MainActivity : ComponentActivity() {
             var isLoggedIn by remember { mutableStateOf(SessionManager.isLoggedIn(context)) }
 
             ContactosAppTheme {
-                if (!isLoggedIn) {
-                    LoginScreen(
-                        onLoginSuccess = { phone, name ->
-                            SessionManager.saveSession(context, phone, name)
-                            isLoggedIn = true
-                        }
-                    )
-                } else {
-                    MainScreen(
-                        onLogout = {
-                            SessionManager.clearSession(context)
-                            try {
-                                FirebaseAuth.getInstance().signOut()
-                            } catch (_: Exception) {}
-                            isLoggedIn = false
-                        }
-                    )
+                Crossfade(
+                    targetState = isLoggedIn,
+                    animationSpec = tween(durationMillis = 350),
+                    label = "SessionStateTransition"
+                ) { loggedIn ->
+                    if (!loggedIn) {
+                        LoginScreen(
+                            onLoginSuccess = { phone, name ->
+                                SessionManager.saveSession(context, phone, name)
+                                isLoggedIn = true
+                            }
+                        )
+                    } else {
+                        MainScreen(
+                            onLogout = {
+                                SessionManager.clearSession(context)
+                                try {
+                                    FirebaseAuth.getInstance().signOut()
+                                } catch (_: Exception) {}
+                                isLoggedIn = false
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -224,7 +233,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
                     },
                     singleLine = true,
-                    isError = errorMessage != null && username.isBlank(),
+                    isError = (errorMessage != null && username.isBlank()),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = WhatsAppGreen,
@@ -254,7 +263,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
                     },
                     singleLine = true,
-                    isError = errorMessage != null && phone.isBlank(),
+                    isError = (errorMessage != null && phone.isBlank()),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = WhatsAppGreen,
@@ -453,6 +462,20 @@ fun MainScreen(onLogout: () -> Unit) {
 
     var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Chats, 1: Notas, 2: Llamadas
     var showMenu by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    // Diálogo profesional de confirmación de cierre de sesión
+    if (showLogoutDialog) {
+        LogoutConfirmationDialog(
+            userName = userName,
+            userPhone = userPhone,
+            onDismiss = { showLogoutDialog = false },
+            onConfirm = {
+                showLogoutDialog = false
+                onLogout()
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -470,7 +493,7 @@ fun MainScreen(onLogout: () -> Unit) {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.AccountCircle,
-                                contentDescription = "Foto de perfil",
+                                contentDescription = "Perfil de usuario",
                                 tint = TextPrimary,
                                 modifier = Modifier.size(32.dp)
                             )
@@ -484,28 +507,44 @@ fun MainScreen(onLogout: () -> Unit) {
                             if (userName.isNotBlank() || userPhone.isNotBlank()) {
                                 DropdownMenuItem(
                                     text = {
-                                        Column {
-                                            if (userName.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .background(WhatsAppGreen, CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
                                                 Text(
-                                                    text = userName,
+                                                    text = if (userName.isNotBlank()) userName.take(1).uppercase() else "U",
                                                     fontWeight = FontWeight.Bold,
-                                                    color = TextPrimary,
-                                                    fontSize = 14.sp
+                                                    fontSize = 16.sp,
+                                                    color = Color.Black
                                                 )
                                             }
-                                            if (userPhone.isNotBlank()) {
-                                                Text(
-                                                    text = userPhone,
-                                                    color = TextSecondary,
-                                                    fontSize = 12.sp
-                                                )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                if (userName.isNotBlank()) {
+                                                    Text(
+                                                        text = userName,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TextPrimary,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                                if (userPhone.isNotBlank()) {
+                                                    Text(
+                                                        text = userPhone,
+                                                        color = TextSecondary,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
                                             }
                                         }
                                     },
                                     onClick = { },
                                     enabled = false
                                 )
-                                HorizontalDivider(color = BorderDark)
+                                HorizontalDivider(color = BorderDark, modifier = Modifier.padding(vertical = 4.dp))
                             }
 
                             DropdownMenuItem(
@@ -525,7 +564,7 @@ fun MainScreen(onLogout: () -> Unit) {
                                 },
                                 onClick = {
                                     showMenu = false
-                                    onLogout()
+                                    showLogoutDialog = true
                                 }
                             )
                         }
@@ -631,6 +670,141 @@ fun MainScreen(onLogout: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun LogoutConfirmationDialog(
+    userName: String,
+    userPhone: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    var isLoggingOut by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isLoggingOut) onDismiss() },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(Color(0xFF3B181E), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
+                    contentDescription = null,
+                    tint = ErrorRed,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "¿Cerrar sesión?",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (userName.isNotBlank() || userPhone.isNotBlank()) {
+                    Surface(
+                        color = Color(0xFF16232B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(WhatsAppGreen, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (userName.isNotBlank()) userName.take(1).uppercase() else "U",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = Color.Black
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                if (userName.isNotBlank()) {
+                                    Text(
+                                        text = userName,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                if (userPhone.isNotBlank()) {
+                                    Text(
+                                        text = userPhone,
+                                        color = TextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "¿Estás seguro de que deseas salir de tu cuenta? Tendrás que volver a iniciar sesión para acceder a tus conversaciones.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    isLoggingOut = true
+                    onConfirm()
+                },
+                enabled = !isLoggingOut,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ErrorRed,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                if (isLoggingOut) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(text = "Cerrar sesión", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isLoggingOut,
+                border = BorderStroke(1.dp, BorderDark),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
 }
 
 @Composable
