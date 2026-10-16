@@ -1,5 +1,6 @@
 package com.example.app_de_contactos
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -24,12 +25,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -44,6 +47,43 @@ val BottomBarBg = Color(0xFF0B141A)
 val BorderDark = Color(0xFF2A3942)
 val ErrorRed = Color(0xFFFF5555)
 
+// Gestor de sesión persistente usando SharedPreferences
+object SessionManager {
+    private const val PREF_NAME = "user_session"
+    private const val KEY_IS_LOGGED_IN = "is_logged_in"
+    private const val KEY_PHONE = "user_phone"
+    private const val KEY_NAME = "user_name"
+
+    fun saveSession(context: Context, phone: String, name: String) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(KEY_IS_LOGGED_IN, true)
+            .putString(KEY_PHONE, phone)
+            .putString(KEY_NAME, name)
+            .apply()
+    }
+
+    fun isLoggedIn(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+    }
+
+    fun getUserPhone(context: Context): String {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_PHONE, "") ?: ""
+    }
+
+    fun getUserName(context: Context): String {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_NAME, "") ?: ""
+    }
+
+    fun clearSession(context: Context) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,16 +93,26 @@ class MainActivity : ComponentActivity() {
         probarConexionesFirebase()
 
         setContent {
-            var isLoggedIn by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+            var isLoggedIn by remember { mutableStateOf(SessionManager.isLoggedIn(context)) }
 
             ContactosAppTheme {
                 if (!isLoggedIn) {
                     LoginScreen(
-                        onLoginSuccess = { isLoggedIn = true }
+                        onLoginSuccess = { phone, name ->
+                            SessionManager.saveSession(context, phone, name)
+                            isLoggedIn = true
+                        }
                     )
                 } else {
                     MainScreen(
-                        onLogout = { isLoggedIn = false }
+                        onLogout = {
+                            SessionManager.clearSession(context)
+                            try {
+                                FirebaseAuth.getInstance().signOut()
+                            } catch (_: Exception) {}
+                            isLoggedIn = false
+                        }
                     )
                 }
             }
@@ -94,7 +144,7 @@ fun ContactosAppTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
+fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
     var isRegisterMode by remember { mutableStateOf(false) } // false: Iniciar Sesión, true: Registrarse
     var username by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -299,7 +349,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                         val nombreGuardado = snapshot.child("nombre").getValue(String::class.java) ?: ""
                                         if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
                                             isLoading = false
-                                            onLoginSuccess()
+                                            onLoginSuccess(cleanPhone, cleanUser)
                                         } else {
                                             isLoading = false
                                             errorMessage = "El nombre de usuario no coincide con el número ingresado."
@@ -312,7 +362,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                                 if (document.exists()) {
                                                     val nombreGuardado = document.getString("nombre") ?: ""
                                                     if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
-                                                        onLoginSuccess()
+                                                        onLoginSuccess(cleanPhone, cleanUser)
                                                     } else {
                                                         errorMessage = "El nombre de usuario no coincide con el número ingresado."
                                                     }
@@ -334,7 +384,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                             if (document.exists()) {
                                                 val nombreGuardado = document.getString("nombre") ?: ""
                                                 if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
-                                                    onLoginSuccess()
+                                                    onLoginSuccess(cleanPhone, cleanUser)
                                                 } else {
                                                     errorMessage = "El nombre de usuario no coincide con el número ingresado."
                                                 }
@@ -397,6 +447,10 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(onLogout: () -> Unit) {
+    val context = LocalContext.current
+    val userName = remember { SessionManager.getUserName(context) }
+    val userPhone = remember { SessionManager.getUserPhone(context) }
+
     var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Chats, 1: Notas, 2: Llamadas
     var showMenu by remember { mutableStateOf(false) }
 
@@ -427,11 +481,38 @@ fun MainScreen(onLogout: () -> Unit) {
                             onDismissRequest = { showMenu = false },
                             modifier = Modifier.background(CardBg)
                         ) {
+                            if (userName.isNotBlank() || userPhone.isNotBlank()) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            if (userName.isNotBlank()) {
+                                                Text(
+                                                    text = userName,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextPrimary,
+                                                    fontSize = 14.sp
+                                                )
+                                            }
+                                            if (userPhone.isNotBlank()) {
+                                                Text(
+                                                    text = userPhone,
+                                                    color = TextSecondary,
+                                                    fontSize = 12.sp
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = { },
+                                    enabled = false
+                                )
+                                HorizontalDivider(color = BorderDark)
+                            }
+
                             DropdownMenuItem(
                                 text = {
                                     Text(
                                         text = "Cerrar sesión",
-                                        color = Color(0xFFFF5555), // Rojo
+                                        color = ErrorRed,
                                         fontWeight = FontWeight.Bold
                                     )
                                 },
@@ -439,7 +520,7 @@ fun MainScreen(onLogout: () -> Unit) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
                                         contentDescription = "Cerrar sesión",
-                                        tint = Color(0xFFFF5555)
+                                        tint = ErrorRed
                                     )
                                 },
                                 onClick = {
