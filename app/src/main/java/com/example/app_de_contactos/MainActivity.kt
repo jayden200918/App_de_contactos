@@ -1120,7 +1120,7 @@ fun NotaItemCard(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // Fila superior: Chip de categoría + Botón de eliminar
+                // Fila superior: Chip de categoría + Botones de editar y eliminar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1140,16 +1140,30 @@ fun NotaItemCard(
                         )
                     }
 
-                    IconButton(
-                        onClick = onDeleteClick,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = "Eliminar nota",
-                            tint = ErrorRed,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onCardClick() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = "Editar nota",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onDeleteClick,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "Eliminar nota",
+                                tint = ErrorRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
