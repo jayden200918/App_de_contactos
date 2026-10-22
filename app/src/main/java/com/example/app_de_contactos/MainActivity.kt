@@ -102,6 +102,14 @@ data class Nota(
     val colorHex: String = "#00A884"
 )
 
+// Modelo de datos para los contactos
+data class Contacto(
+    val id: String = "",
+    val nombre: String = "",
+    val telefono: String = "",
+    val fechaAgregado: String = ""
+)
+
 // Gestor de sesión persistente usando SharedPreferences
 object SessionManager {
     private const val PREF_NAME = "user_session"
@@ -631,19 +639,19 @@ fun MainScreen(onLogout: () -> Unit) {
                 containerColor = BottomBarBg,
                 tonalElevation = 8.dp
             ) {
-                // Tab 1: Chats
+                // Tab 1: Contactos
                 NavigationBarItem(
                     selected = selectedBottomTab == 0,
                     onClick = { selectedBottomTab = 0 },
                     icon = {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Chat,
-                            contentDescription = "Chats"
+                            imageVector = Icons.Outlined.ContactPage,
+                            contentDescription = "Contactos"
                         )
                     },
                     label = {
                         Text(
-                            text = "Chats",
+                            text = "Contactos",
                             fontWeight = if (selectedBottomTab == 0) FontWeight.Bold else FontWeight.Normal
                         )
                     },
@@ -715,7 +723,7 @@ fun MainScreen(onLogout: () -> Unit) {
                 .padding(paddingValues)
         ) {
             when (selectedBottomTab) {
-                0 -> ChatsContent()
+                0 -> ContactosContent(userPhone = userPhone)
                 1 -> NotasContent(userPhone = userPhone)
                 2 -> LlamadasContent()
             }
@@ -859,35 +867,643 @@ fun LogoutConfirmationDialog(
 }
 
 @Composable
-fun ChatsContent() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.ContactPage,
-            contentDescription = null,
-            tint = WhatsAppGreen,
-            modifier = Modifier.size(64.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Lista de Chats",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Aquí aparecerán tus conversaciones recientes.",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            textAlign = TextAlign.Center
+fun ContactosContent(userPhone: String) {
+    val contactos = remember { mutableStateListOf<Contacto>() }
+    var isLoading by remember { mutableStateOf(true) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var contactoToEdit by remember { mutableStateOf<Contacto?>(null) }
+    var contactoToDelete by remember { mutableStateOf<Contacto?>(null) }
+
+    val cleanPhone = userPhone.trim()
+    val context = LocalContext.current
+
+    // Cargar contactos desde Firebase Realtime Database
+    DisposableEffect(cleanPhone) {
+        if (cleanPhone.isBlank()) {
+            isLoading = false
+            return@DisposableEffect onDispose {}
+        }
+
+        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+        val ref = rtdb.getReference("usuarios").child(cleanPhone).child("contactos")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<Contacto>()
+                for (child in snapshot.children) {
+                    val id = child.key ?: ""
+                    val nombre = child.child("nombre").getValue(String::class.java) ?: ""
+                    val telefono = child.child("telefono").getValue(String::class.java) ?: ""
+                    val fechaAgregado = child.child("fechaAgregado").getValue(String::class.java) ?: ""
+
+                    if (id.isNotBlank()) {
+                        list.add(Contacto(id = id, nombre = nombre, telefono = telefono, fechaAgregado = fechaAgregado))
+                    }
+                }
+                contactos.clear()
+                contactos.addAll(list.sortedBy { it.nombre.lowercase() }) // Ordenar alfabéticamente
+                isLoading = false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                isLoading = false
+            }
+        }
+
+        ref.addValueEventListener(listener)
+
+        onDispose {
+            ref.removeEventListener(listener)
+        }
+    }
+
+    // Diálogo para agregar nuevo contacto
+    if (showAddDialog) {
+        AgregarContactoDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { nombre, telefono ->
+                showAddDialog = false
+                guardarContactoEnFirebase(cleanPhone, nombre, telefono)
+            }
         )
     }
+
+    // Diálogo para editar contacto
+    if (contactoToEdit != null) {
+        EditarContactoDialog(
+            contacto = contactoToEdit!!,
+            onDismiss = { contactoToEdit = null },
+            onSave = { nuevoNombre, nuevoTelefono ->
+                val targetId = contactoToEdit?.id ?: ""
+                contactoToEdit = null
+                if (targetId.isNotBlank()) {
+                    actualizarContactoEnFirebase(cleanPhone, targetId, nuevoNombre, nuevoTelefono)
+                }
+            }
+        )
+    }
+
+    // Diálogo para confirmar eliminación de contacto
+    if (contactoToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { contactoToDelete = null },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = CardBg,
+            title = {
+                Text("¿Eliminar contacto?", color = TextPrimary, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "¿Estás seguro de que deseas eliminar a ${contactoToDelete?.nombre}?",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = contactoToDelete
+                        contactoToDelete = null
+                        if (target != null) {
+                            eliminarContactoDeFirebase(cleanPhone, target.id)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                ) {
+                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { contactoToDelete = null },
+                    border = BorderStroke(1.dp, BorderDark)
+                ) {
+                    Text("Cancelar", color = TextPrimary)
+                }
+            }
+        )
+    }
+
+    val contactosFiltrados = remember(contactos, searchQuery) {
+        if (searchQuery.isBlank()) {
+            contactos
+        } else {
+            contactos.filter {
+                it.nombre.contains(searchQuery, ignoreCase = true) ||
+                it.telefono.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Campo de Búsqueda
+            if (contactos.isNotEmpty()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Buscar contacto por nombre o número...", color = TextSecondary, fontSize = 14.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = WhatsAppGreen)
+                }
+            } else if (contactos.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ContactPage,
+                        contentDescription = null,
+                        tint = WhatsAppGreen,
+                        modifier = Modifier.size(72.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "No tienes contactos guardados",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Agrega a tus amigos y familiares presionando el botón '+'.",
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else if (contactosFiltrados.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No se encontraron contactos para \"$searchQuery\"",
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(contactosFiltrados, key = { it.id }) { contacto ->
+                        ContactoItemCard(
+                            contacto = contacto,
+                            onEditClick = { contactoToEdit = contacto },
+                            onDeleteClick = { contactoToDelete = contacto },
+                            onCallClick = {
+                                try {
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_DIAL,
+                                        android.net.Uri.parse("tel:${contacto.telefono}")
+                                    )
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Botón Flotante (FAB) para Agregar Nuevo Contacto
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            containerColor = WhatsAppGreen,
+            contentColor = Color.Black,
+            shape = CircleShape,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Agregar contacto",
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun ContactoItemCard(
+    contacto: Contacto,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onCallClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                // Avatar circular con inicial
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .background(WhatsAppGreen.copy(alpha = 0.2f), CircleShape)
+                        .padding(2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (contacto.nombre.isNotBlank()) contacto.nombre.take(1).uppercase() else "C",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = WhatsAppGreen
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column {
+                    Text(
+                        text = contacto.nombre,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = contacto.telefono,
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Botón para llamar
+                IconButton(
+                    onClick = onCallClick,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Phone,
+                        contentDescription = "Llamar a ${contacto.nombre}",
+                        tint = WhatsAppGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Botón para editar
+                IconButton(
+                    onClick = onEditClick,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Editar contacto",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Botón para eliminar
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = "Eliminar contacto",
+                        tint = ErrorRed,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AgregarContactoDialog(
+    onDismiss: () -> Unit,
+    onSave: (nombre: String, telefono: String) -> Unit
+) {
+    var nombre by remember { mutableStateOf("") }
+    var telefono by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(WhatsAppGreen.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint = WhatsAppGreen,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Nuevo Contacto",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Campo 1: Nombre del Contacto
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = {
+                        nombre = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Nombre del contacto", color = TextSecondary) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Campo 2: Número de Teléfono
+                OutlinedTextField(
+                    value = telefono,
+                    onValueChange = {
+                        telefono = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Número de teléfono", color = TextSecondary) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = ErrorRed,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cleanNombre = nombre.trim()
+                    val cleanTelefono = telefono.trim()
+
+                    if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
+                        errorMessage = "Por favor, completa el nombre y el número."
+                        return@Button
+                    }
+
+                    onSave(cleanNombre, cleanTelefono)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Guardar Contacto", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Cancelar", color = TextPrimary)
+            }
+        }
+    )
+}
+
+@Composable
+fun EditarContactoDialog(
+    contacto: Contacto,
+    onDismiss: () -> Unit,
+    onSave: (nombre: String, telefono: String) -> Unit
+) {
+    var nombre by remember { mutableStateOf(contacto.nombre) }
+    var telefono by remember { mutableStateOf(contacto.telefono) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Editar Contacto",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = {
+                        nombre = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Nombre del contacto", color = TextSecondary) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = telefono,
+                    onValueChange = {
+                        telefono = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Número de teléfono", color = TextSecondary) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = ErrorRed,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cleanNombre = nombre.trim()
+                    val cleanTelefono = telefono.trim()
+
+                    if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
+                        errorMessage = "Por favor, completa todos los campos."
+                        return@Button
+                    }
+
+                    onSave(cleanNombre, cleanTelefono)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Guardar Cambios", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Cancelar", color = TextPrimary)
+            }
+        }
+    )
 }
 
 @Composable
@@ -1823,6 +2439,74 @@ private fun eliminarNotaDeFirebase(phone: String, noteId: String) {
                     .document(phone)
                     .collection("notas")
                     .document(noteId)
+                    .delete()
+            } catch (_: Exception) {}
+        }
+}
+
+// Funciones auxiliares de contactos para Firebase
+private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefono: String) {
+    if (userPhone.isBlank()) return
+
+    val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val contactsRef = rtdb.getReference("usuarios").child(userPhone).child("contactos")
+    val contactId = contactsRef.push().key ?: System.currentTimeMillis().toString()
+
+    val contactMap = hashMapOf(
+        "id" to contactId,
+        "nombre" to nombre,
+        "telefono" to telefono,
+        "fechaAgregado" to dateStr
+    )
+
+    contactsRef.child(contactId).setValue(contactMap)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("contactos")
+                    .document(contactId)
+                    .set(contactMap)
+            } catch (_: Exception) {}
+        }
+}
+
+private fun actualizarContactoEnFirebase(userPhone: String, contactId: String, nombre: String, telefono: String) {
+    if (userPhone.isBlank() || contactId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val updates = hashMapOf<String, Any>(
+        "nombre" to nombre,
+        "telefono" to telefono
+    )
+
+    rtdb.getReference("usuarios").child(userPhone).child("contactos").child(contactId).updateChildren(updates)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("contactos")
+                    .document(contactId)
+                    .update(updates)
+            } catch (_: Exception) {}
+        }
+}
+
+private fun eliminarContactoDeFirebase(userPhone: String, contactId: String) {
+    if (userPhone.isBlank() || contactId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    rtdb.getReference("usuarios").child(userPhone).child("contactos").child(contactId).removeValue()
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("contactos")
+                    .document(contactId)
                     .delete()
             } catch (_: Exception) {}
         }
