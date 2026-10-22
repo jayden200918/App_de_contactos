@@ -895,6 +895,7 @@ fun NotasContent(userPhone: String) {
     var isLoading by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
     var notaToDelete by remember { mutableStateOf<Nota?>(null) }
+    var selectedNotaForDetail by remember { mutableStateOf<Nota?>(null) }
 
     val cleanPhone = userPhone.trim()
 
@@ -997,6 +998,21 @@ fun NotasContent(userPhone: String) {
         )
     }
 
+    // Diálogo para consultar/ver la nota al tocarla
+    if (selectedNotaForDetail != null) {
+        VerDetalleNotaDialog(
+            nota = selectedNotaForDetail!!,
+            onDismiss = { selectedNotaForDetail = null },
+            onDelete = {
+                val target = selectedNotaForDetail
+                selectedNotaForDetail = null
+                if (target != null) {
+                    notaToDelete = target
+                }
+            }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
             Box(
@@ -1045,6 +1061,7 @@ fun NotasContent(userPhone: String) {
                 items(notas, key = { it.id }) { nota ->
                     NotaItemCard(
                         nota = nota,
+                        onCardClick = { selectedNotaForDetail = nota },
                         onDeleteClick = { notaToDelete = nota }
                     )
                 }
@@ -1073,12 +1090,15 @@ fun NotasContent(userPhone: String) {
 @Composable
 fun NotaItemCard(
     nota: Nota,
+    onCardClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     val tagColor = parseHexColor(nota.colorHex)
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCardClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
         border = BorderStroke(1.dp, BorderDark),
@@ -1168,6 +1188,120 @@ fun NotaItemCard(
             }
         }
     }
+}
+
+@Composable
+fun VerDetalleNotaDialog(
+    nota: Nota,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val tagColor = parseHexColor(nota.colorHex)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = tagColor.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, tagColor.copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = nota.categoria,
+                        color = tagColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Título completo
+                Text(
+                    text = if (nota.titulo.isBlank()) "Sin título" else nota.titulo,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Descripción completa
+                Text(
+                    text = if (nota.descripcion.isBlank()) "(Sin contenido adicional)" else nota.descripcion,
+                    fontSize = 15.sp,
+                    color = TextSecondary,
+                    lineHeight = 22.sp
+                )
+
+                if (nota.fecha.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    HorizontalDivider(color = BorderDark)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Creada el ${nota.fecha}",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Cerrar", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                },
+                border = BorderStroke(1.dp, ErrorRed),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Eliminar")
+            }
+        }
+    )
 }
 
 @Composable
