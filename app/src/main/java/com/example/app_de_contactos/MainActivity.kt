@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
@@ -42,9 +43,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -105,11 +104,12 @@ data class Nota(
     val colorHex: String = "#00A884"
 )
 
-// Modelo de datos para los contactos
+// Modelo de datos para los contactos (con campo de detalle/nota)
 data class Contacto(
     val id: String = "",
     val nombre: String = "",
     val telefono: String = "",
+    val detalle: String = "",
     val fechaAgregado: String = ""
 )
 
@@ -883,10 +883,11 @@ fun ContactosContent(userPhone: String) {
                     val id = child.key ?: ""
                     val nombre = child.child("nombre").getValue(String::class.java) ?: ""
                     val telefono = child.child("telefono").getValue(String::class.java) ?: ""
+                    val detalle = child.child("detalle").getValue(String::class.java) ?: ""
                     val fechaAgregado = child.child("fechaAgregado").getValue(String::class.java) ?: ""
 
                     if (id.isNotBlank()) {
-                        list.add(Contacto(id = id, nombre = nombre, telefono = telefono, fechaAgregado = fechaAgregado))
+                        list.add(Contacto(id = id, nombre = nombre, telefono = telefono, detalle = detalle, fechaAgregado = fechaAgregado))
                     }
                 }
                 contactos.clear()
@@ -906,18 +907,44 @@ fun ContactosContent(userPhone: String) {
         }
     }
 
-    // Diálogo para agregar nuevo contacto con Jetpack Compose
+    // Diálogo para agregar nuevo contacto
     if (showAddDialog) {
         AgregarContactoDialog(
             onDismiss = { showAddDialog = false },
-            onSaveInApp = { nombre, telefono ->
+            onSaveInApp = { nombre, telefono, detalle ->
                 showAddDialog = false
-                guardarContactoEnFirebase(cleanPhone, nombre, telefono)
+                guardarContactoEnFirebase(cleanPhone, nombre, telefono, detalle)
             },
-            onSaveToDevice = { nombre, telefono ->
+            onSaveToDevice = { nombre, telefono, detalle ->
                 showAddDialog = false
-                guardarContactoEnFirebase(cleanPhone, nombre, telefono)
+                guardarContactoEnFirebase(cleanPhone, nombre, telefono, detalle)
                 guardarEnAgendaDelDispositivo(context, nombre, telefono)
+            }
+        )
+    }
+
+    // Diálogo para consultar detalle del contacto
+    if (selectedContactoForDetail != null) {
+        VerDetalleContactoDialog(
+            contacto = selectedContactoForDetail!!,
+            onDismiss = { selectedContactoForDetail = null },
+            onEdit = {
+                val target = selectedContactoForDetail
+                selectedContactoForDetail = null
+                contactoToEdit = target
+            },
+            onCall = {
+                val tel = selectedContactoForDetail?.telefono ?: ""
+                selectedContactoForDetail = null
+                if (tel.isNotBlank()) {
+                    try {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_DIAL,
+                            android.net.Uri.parse("tel:$tel")
+                        )
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
             }
         )
     }
@@ -927,11 +954,11 @@ fun ContactosContent(userPhone: String) {
         EditarContactoDialog(
             contacto = contactoToEdit!!,
             onDismiss = { contactoToEdit = null },
-            onSave = { nuevoNombre, nuevoTelefono ->
+            onSave = { nuevoNombre, nuevoTelefono, nuevoDetalle ->
                 val targetId = contactoToEdit?.id ?: ""
                 contactoToEdit = null
                 if (targetId.isNotBlank()) {
-                    actualizarContactoEnFirebase(cleanPhone, targetId, nuevoNombre, nuevoTelefono)
+                    actualizarContactoEnFirebase(cleanPhone, targetId, nuevoNombre, nuevoTelefono, nuevoDetalle)
                 }
             }
         )
@@ -983,7 +1010,8 @@ fun ContactosContent(userPhone: String) {
         } else {
             contactos.filter {
                 it.nombre.contains(searchQuery, ignoreCase = true) ||
-                it.telefono.contains(searchQuery, ignoreCase = true)
+                it.telefono.contains(searchQuery, ignoreCase = true) ||
+                it.detalle.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -995,7 +1023,7 @@ fun ContactosContent(userPhone: String) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Buscar contacto por nombre o número...", color = TextSecondary, fontSize = 14.sp) },
+                    placeholder = { Text("Buscar contacto o detalle...", color = TextSecondary, fontSize = 14.sp) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Outlined.Person,
@@ -1076,6 +1104,7 @@ fun ContactosContent(userPhone: String) {
                     items(contactosFiltrados, key = { it.id }) { contacto ->
                         ContactoItemCard(
                             contacto = contacto,
+                            onCardClick = { selectedContactoForDetail = contacto },
                             onEditClick = { contactoToEdit = contacto },
                             onDeleteClick = { contactoToDelete = contacto },
                             onCallClick = {
@@ -1115,12 +1144,15 @@ fun ContactosContent(userPhone: String) {
 @Composable
 fun ContactoItemCard(
     contacto: Contacto,
+    onCardClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onCallClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCardClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
         border = BorderStroke(1.dp, BorderDark),
@@ -1179,6 +1211,27 @@ fun ContactoItemCard(
                             color = TextSecondary
                         )
                     }
+
+                    // Muestra el detalle del contacto si existe
+                    if (contacto.detalle.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = WhatsAppGreen,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = contacto.detalle,
+                                fontSize = 12.sp,
+                                color = WhatsAppGreen,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1227,13 +1280,172 @@ fun ContactoItemCard(
 }
 
 @Composable
+fun VerDetalleContactoDialog(
+    contacto: Contacto,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onCall: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(WhatsAppGreen, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (contacto.nombre.isNotBlank()) contacto.nombre.take(1).uppercase() else "C",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color.Black
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Detalle del Contacto",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Surface(
+                    color = Color(0xFF16232B),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = contacto.nombre,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Phone,
+                                contentDescription = null,
+                                tint = WhatsAppGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = contacto.telefono,
+                                fontSize = 15.sp,
+                                color = TextPrimary
+                            )
+                        }
+
+                        if (contacto.detalle.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = BorderDark)
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = "Detalle / Nota:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = contacto.detalle,
+                                fontSize = 14.sp,
+                                color = TextPrimary,
+                                lineHeight = 20.sp
+                            )
+                        }
+
+                        if (contacto.fechaAgregado.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Agregado el ${contacto.fechaAgregado}",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = onCall,
+                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Phone,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Llamar", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                OutlinedButton(
+                    onClick = onEdit,
+                    border = BorderStroke(1.dp, BorderDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = null,
+                        tint = TextPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Editar", color = TextPrimary)
+                }
+            }
+        }
+    )
+}
+
+@Composable
 fun AgregarContactoDialog(
     onDismiss: () -> Unit,
-    onSaveInApp: (nombre: String, telefono: String) -> Unit,
-    onSaveToDevice: (nombre: String, telefono: String) -> Unit
+    onSaveInApp: (nombre: String, telefono: String, detalle: String) -> Unit,
+    onSaveToDevice: (nombre: String, telefono: String, detalle: String) -> Unit
 ) {
     var nombre by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
+    var detalle by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -1283,7 +1495,11 @@ fun AgregarContactoDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 // Campo 1: Nombre del Contacto
                 OutlinedTextField(
                     value = nombre,
@@ -1337,6 +1553,35 @@ fun AgregarContactoDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Campo 3: Detalle o Nota del contacto
+                OutlinedTextField(
+                    value = detalle,
+                    onValueChange = {
+                        detalle = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Detalle o Nota (Opcional)", color = TextSecondary) },
+                    placeholder = { Text("Ej: Amigo de trabajo, Familiar...", color = TextSecondary, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    },
+                    minLines = 2,
+                    maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1357,13 +1602,14 @@ fun AgregarContactoDialog(
                     onClick = {
                         val cleanNombre = nombre.trim()
                         val cleanTelefono = telefono.trim()
+                        val cleanDetalle = detalle.trim()
 
                         if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
                             errorMessage = "Por favor, completa el nombre y el número."
                             return@Button
                         }
 
-                        onSaveInApp(cleanNombre, cleanTelefono)
+                        onSaveInApp(cleanNombre, cleanTelefono, cleanDetalle)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
                     shape = RoundedCornerShape(10.dp),
@@ -1380,13 +1626,14 @@ fun AgregarContactoDialog(
                     onClick = {
                         val cleanNombre = nombre.trim()
                         val cleanTelefono = telefono.trim()
+                        val cleanDetalle = detalle.trim()
 
                         if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
                             errorMessage = "Por favor, completa el nombre y el número."
                             return@OutlinedButton
                         }
 
-                        onSaveToDevice(cleanNombre, cleanTelefono)
+                        onSaveToDevice(cleanNombre, cleanTelefono, cleanDetalle)
                     },
                     border = BorderStroke(1.dp, WhatsAppGreen),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = WhatsAppGreen),
@@ -1404,7 +1651,7 @@ fun AgregarContactoDialog(
                     Text("Guardar en Agenda del Celular", fontWeight = FontWeight.Bold)
                 }
 
-                Spacer(modifier = Modifier.height(20.dp)) // Espaciado mayor para separar el botón de cancelar
+                Spacer(modifier = Modifier.height(20.dp))
 
                 OutlinedButton(
                     onClick = onDismiss,
@@ -1426,10 +1673,11 @@ fun AgregarContactoDialog(
 fun EditarContactoDialog(
     contacto: Contacto,
     onDismiss: () -> Unit,
-    onSave: (nombre: String, telefono: String) -> Unit
+    onSave: (nombre: String, telefono: String, detalle: String) -> Unit
 ) {
     var nombre by remember { mutableStateOf(contacto.nombre) }
     var telefono by remember { mutableStateOf(contacto.telefono) }
+    var detalle by remember { mutableStateOf(contacto.detalle) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -1463,7 +1711,11 @@ fun EditarContactoDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 OutlinedTextField(
                     value = nombre,
                     onValueChange = {
@@ -1501,6 +1753,26 @@ fun EditarContactoDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = detalle,
+                    onValueChange = {
+                        detalle = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Detalle o Nota", color = TextSecondary) },
+                    minLines = 2,
+                    maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = WhatsAppGreen,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1517,13 +1789,14 @@ fun EditarContactoDialog(
                 onClick = {
                     val cleanNombre = nombre.trim()
                     val cleanTelefono = telefono.trim()
+                    val cleanDetalle = detalle.trim()
 
                     if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
-                        errorMessage = "Por favor, completa todos los campos."
+                        errorMessage = "Por favor, completa todos los campos principales."
                         return@Button
                     }
 
-                    onSave(cleanNombre, cleanTelefono)
+                    onSave(cleanNombre, cleanTelefono, cleanDetalle)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
                 shape = RoundedCornerShape(10.dp)
@@ -2495,7 +2768,7 @@ private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, tele
     }
 }
 
-private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefono: String) {
+private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefono: String, detalle: String) {
     if (userPhone.isBlank()) return
 
     val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
@@ -2507,6 +2780,7 @@ private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefon
         "id" to contactId,
         "nombre" to nombre,
         "telefono" to telefono,
+        "detalle" to detalle,
         "fechaAgregado" to dateStr
     )
 
@@ -2523,13 +2797,14 @@ private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefon
         }
 }
 
-private fun actualizarContactoEnFirebase(userPhone: String, contactId: String, nombre: String, telefono: String) {
+private fun actualizarContactoEnFirebase(userPhone: String, contactId: String, nombre: String, telefono: String, detalle: String) {
     if (userPhone.isBlank() || contactId.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
     val updates = hashMapOf<String, Any>(
         "nombre" to nombre,
-        "telefono" to telefono
+        "telefono" to telefono,
+        "detalle" to detalle
     )
 
     rtdb.getReference("usuarios").child(userPhone).child("contactos").child(contactId).updateChildren(updates)
