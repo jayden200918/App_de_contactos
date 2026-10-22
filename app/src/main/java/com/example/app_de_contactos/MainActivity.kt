@@ -933,6 +933,11 @@ fun ContactosContent(userPhone: String) {
                 selectedContactoForDetail = null
                 contactoToEdit = target
             },
+            onDelete = {
+                val target = selectedContactoForDetail
+                selectedContactoForDetail = null
+                contactoToDelete = target
+            },
             onCall = {
                 val tel = selectedContactoForDetail?.telefono ?: ""
                 selectedContactoForDetail = null
@@ -1284,6 +1289,7 @@ fun VerDetalleContactoDialog(
     contacto: Contacto,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onCall: () -> Unit
 ) {
     AlertDialog(
@@ -1399,38 +1405,57 @@ fun VerDetalleContactoDialog(
         confirmButton = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = onCall,
-                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                OutlinedButton(
+                    onClick = onDelete,
+                    border = BorderStroke(1.dp, ErrorRed),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Phone,
+                        imageVector = Icons.Outlined.Delete,
                         contentDescription = null,
-                        tint = Color.Black,
+                        tint = ErrorRed,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Llamar", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Eliminar", color = ErrorRed)
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Row {
+                    OutlinedButton(
+                        onClick = onEdit,
+                        border = BorderStroke(1.dp, BorderDark),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = null,
+                            tint = TextPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Editar", color = TextPrimary)
+                    }
 
-                OutlinedButton(
-                    onClick = onEdit,
-                    border = BorderStroke(1.dp, BorderDark),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = null,
-                        tint = TextPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Editar", color = TextPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = onCall,
+                        colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Llamar", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
