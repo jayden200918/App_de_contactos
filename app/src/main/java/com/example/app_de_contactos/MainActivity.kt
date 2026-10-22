@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Title
@@ -918,13 +919,18 @@ fun ContactosContent(userPhone: String) {
         }
     }
 
-    // Diálogo para agregar nuevo contacto
+    // Diálogo para agregar nuevo contacto con Jetpack Compose
     if (showAddDialog) {
         AgregarContactoDialog(
             onDismiss = { showAddDialog = false },
-            onSave = { nombre, telefono ->
+            onSaveInApp = { nombre, telefono ->
                 showAddDialog = false
                 guardarContactoEnFirebase(cleanPhone, nombre, telefono)
+            },
+            onSaveToDevice = { nombre, telefono ->
+                showAddDialog = false
+                guardarContactoEnFirebase(cleanPhone, nombre, telefono)
+                guardarEnAgendaDelDispositivo(context, nombre, telefono)
             }
         )
     }
@@ -1093,6 +1099,9 @@ fun ContactosContent(userPhone: String) {
                                     )
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
+                            },
+                            onSaveToDeviceClick = {
+                                guardarEnAgendaDelDispositivo(context, contacto.nombre, contacto.telefono)
                             }
                         )
                     }
@@ -1124,7 +1133,8 @@ fun ContactoItemCard(
     contacto: Contacto,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onCallClick: () -> Unit
+    onCallClick: () -> Unit,
+    onSaveToDeviceClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1203,6 +1213,19 @@ fun ContactoItemCard(
                     )
                 }
 
+                // Botón para guardar en la agenda del teléfono
+                IconButton(
+                    onClick = onSaveToDeviceClick,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PersonAdd,
+                        contentDescription = "Guardar en agenda del teléfono",
+                        tint = WhatsAppGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
                 // Botón para editar
                 IconButton(
                     onClick = onEditClick,
@@ -1236,7 +1259,8 @@ fun ContactoItemCard(
 @Composable
 fun AgregarContactoDialog(
     onDismiss: () -> Unit,
-    onSave: (nombre: String, telefono: String) -> Unit
+    onSaveInApp: (nombre: String, telefono: String) -> Unit,
+    onSaveToDevice: (nombre: String, telefono: String) -> Unit
 ) {
     var nombre by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
@@ -1355,31 +1379,74 @@ fun AgregarContactoDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val cleanNombre = nombre.trim()
-                    val cleanTelefono = telefono.trim()
-
-                    if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
-                        errorMessage = "Por favor, completa el nombre y el número."
-                        return@Button
-                    }
-
-                    onSave(cleanNombre, cleanTelefono)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
-                shape = RoundedCornerShape(10.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Guardar Contacto", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            OutlinedButton(
-                onClick = onDismiss,
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Cancelar", color = TextPrimary)
+                Button(
+                    onClick = {
+                        val cleanNombre = nombre.trim()
+                        val cleanTelefono = telefono.trim()
+
+                        if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
+                            errorMessage = "Por favor, completa el nombre y el número."
+                            return@Button
+                        }
+
+                        onSaveInApp(cleanNombre, cleanTelefono)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("Guardar en la App", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val cleanNombre = nombre.trim()
+                        val cleanTelefono = telefono.trim()
+
+                        if (cleanNombre.isBlank() || cleanTelefono.isBlank()) {
+                            errorMessage = "Por favor, completa el nombre y el número."
+                            return@OutlinedButton
+                        }
+
+                        onSaveToDevice(cleanNombre, cleanTelefono)
+                    },
+                    border = BorderStroke(1.dp, WhatsAppGreen),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WhatsAppGreen),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PersonAdd,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Guardar en Agenda del Celular", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(20.dp)) // Espaciado mayor para separar el botón de cancelar
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    border = BorderStroke(1.dp, BorderDark),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    Text("Cancelar", color = TextPrimary)
+                }
             }
         }
     )
@@ -2444,7 +2511,20 @@ private fun eliminarNotaDeFirebase(phone: String, noteId: String) {
         }
 }
 
-// Funciones auxiliares de contactos para Firebase
+// Funciones auxiliares de contactos para Firebase y agenda
+private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, telefono: String) {
+    try {
+        val intent = android.content.Intent(android.provider.ContactsContract.Intents.Insert.ACTION).apply {
+            type = android.provider.ContactsContract.RawContacts.CONTENT_TYPE
+            putExtra(android.provider.ContactsContract.Intents.Insert.NAME, nombre)
+            putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, telefono)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Log.e("ContactoAgenda", "Error al abrir la agenda de contactos", e)
+    }
+}
+
 private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefono: String) {
     if (userPhone.isBlank()) return
 
