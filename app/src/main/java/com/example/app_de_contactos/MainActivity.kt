@@ -235,7 +235,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (isRegisterMode) "Crea tu cuenta en Firebase" else "Bienvenido de nuevo",
+                    text = if (isRegisterMode) "Crea tu cuenta" else "Bienvenido de nuevo",
                     fontSize = 14.sp,
                     color = WhatsAppGreen
                 )
