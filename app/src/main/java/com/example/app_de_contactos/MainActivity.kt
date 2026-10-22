@@ -30,10 +30,11 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -1002,6 +1003,7 @@ fun NotasContent(userPhone: String) {
     if (selectedNotaForDetail != null) {
         VerDetalleNotaDialog(
             nota = selectedNotaForDetail!!,
+            userPhone = cleanPhone,
             onDismiss = { selectedNotaForDetail = null },
             onDelete = {
                 val target = selectedNotaForDetail
@@ -1190,16 +1192,26 @@ fun NotaItemCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VerDetalleNotaDialog(
     nota: Nota,
+    userPhone: String,
     onDismiss: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val tagColor = parseHexColor(nota.colorHex)
+    var isEditMode by remember { mutableStateOf(false) }
+    var editTitulo by remember { mutableStateOf(nota.titulo) }
+    var editDescripcion by remember { mutableStateOf(nota.descripcion) }
+    var editCategoria by remember { mutableStateOf(categoriasDisponibles.find { it.nombre == nota.categoria } ?: categoriasDisponibles.first()) }
+    var isSavingChanges by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val currentTagColor = parseHexColor(if (isEditMode) editCategoria.hex else nota.colorHex)
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSavingChanges) onDismiss() },
+        modifier = Modifier.fillMaxWidth(0.95f),
         shape = RoundedCornerShape(24.dp),
         containerColor = CardBg,
         title = {
@@ -1209,17 +1221,27 @@ fun VerDetalleNotaDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = tagColor.copy(alpha = 0.18f),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, tagColor.copy(alpha = 0.4f))
+                    color = currentTagColor.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, currentTagColor.copy(alpha = 0.5f))
                 ) {
-                    Text(
-                        text = nota.categoria,
-                        color = tagColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(currentTagColor, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isEditMode) editCategoria.nombre else nota.categoria,
+                            color = currentTagColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 IconButton(
@@ -1241,64 +1263,229 @@ fun VerDetalleNotaDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                // Título completo
-                Text(
-                    text = if (nota.titulo.isBlank()) "Sin título" else nota.titulo,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Descripción completa
-                Text(
-                    text = if (nota.descripcion.isBlank()) "(Sin contenido adicional)" else nota.descripcion,
-                    fontSize = 15.sp,
-                    color = TextSecondary,
-                    lineHeight = 22.sp
-                )
-
-                if (nota.fecha.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    HorizontalDivider(color = BorderDark)
-                    Spacer(modifier = Modifier.height(10.dp))
+                if (!isEditMode) {
+                    // MODO LECTURA / CONSULTA
                     Text(
-                        text = "Creada el ${nota.fecha}",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        textAlign = TextAlign.End,
+                        text = if (nota.titulo.isBlank()) "Sin título" else nota.titulo,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+
+                    if (nota.fecha.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Schedule,
+                                contentDescription = null,
+                                tint = WhatsAppGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Creada: ${nota.fecha}",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = BorderDark)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Surface(
+                        color = Color(0xFF16232B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (nota.descripcion.isBlank()) "(Sin descripción ni contenido adicional)" else nota.descripcion,
+                            fontSize = 15.sp,
+                            color = TextPrimary,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    // MODO EDICIÓN
+                    Text(
+                        text = "Categoría:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(categoriasDisponibles) { cat ->
+                            val isSelected = cat.nombre == editCategoria.nombre
+                            Surface(
+                                onClick = { editCategoria = cat },
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF16232B),
+                                border = BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) cat.color else BorderDark
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(cat.color, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = cat.nombre,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) TextPrimary else TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = editTitulo,
+                        onValueChange = {
+                            editTitulo = it
+                            if (errorMessage != null) errorMessage = null
+                        },
+                        label = { Text("Título de la nota", color = TextSecondary) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = editCategoria.color,
+                            unfocusedBorderColor = BorderDark,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = editDescripcion,
+                        onValueChange = {
+                            editDescripcion = it
+                            if (errorMessage != null) errorMessage = null
+                        },
+                        label = { Text("Descripción o contenido", color = TextSecondary) },
+                        minLines = 4,
+                        maxLines = 8,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = editCategoria.color,
+                            unfocusedBorderColor = BorderDark,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMessage!!,
+                            color = ErrorRed,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Cerrar", color = Color.Black, fontWeight = FontWeight.Bold)
+            if (!isEditMode) {
+                Button(
+                    onClick = { isEditMode = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Editar",
+                        tint = Color.Black,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Editar", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = {
+                        val cleanTitle = editTitulo.trim()
+                        val cleanDesc = editDescripcion.trim()
+
+                        if (cleanTitle.isBlank() && cleanDesc.isBlank()) {
+                            errorMessage = "Ingresa al menos un título o una descripción."
+                            return@Button
+                        }
+
+                        isSavingChanges = true
+                        actualizarNotaEnFirebase(
+                            phone = userPhone,
+                            noteId = nota.id,
+                            titulo = cleanTitle,
+                            descripcion = cleanDesc,
+                            categoria = editCategoria.nombre,
+                            colorHex = editCategoria.hex
+                        )
+                        isSavingChanges = false
+                        onDismiss()
+                    },
+                    enabled = !isSavingChanges,
+                    colors = ButtonDefaults.buttonColors(containerColor = editCategoria.color),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (isSavingChanges) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Guardar Cambios", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         },
         dismissButton = {
-            OutlinedButton(
-                onClick = {
-                    onDismiss()
-                    onDelete()
-                },
-                border = BorderStroke(1.dp, ErrorRed),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Delete,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Eliminar")
+            if (!isEditMode) {
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onDelete()
+                    },
+                    border = BorderStroke(1.dp, ErrorRed),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Eliminar")
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { isEditMode = false },
+                    border = BorderStroke(1.dp, BorderDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancelar", color = TextPrimary)
+                }
             }
         }
     )
@@ -1575,6 +1762,37 @@ private fun guardarNotaEnFirebase(
                     .collection("notas")
                     .document(noteId)
                     .set(noteMap)
+            } catch (_: Exception) {}
+        }
+}
+
+private fun actualizarNotaEnFirebase(
+    phone: String,
+    noteId: String,
+    titulo: String,
+    descripcion: String,
+    categoria: String,
+    colorHex: String
+) {
+    if (phone.isBlank() || noteId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val updates = hashMapOf<String, Any>(
+        "titulo" to titulo,
+        "descripcion" to descripcion,
+        "categoria" to categoria,
+        "colorHex" to colorHex
+    )
+
+    rtdb.getReference("usuarios").child(phone).child("notas").child(noteId).updateChildren(updates)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(phone)
+                    .collection("notas")
+                    .document(noteId)
+                    .update(updates)
             } catch (_: Exception) {}
         }
 }
