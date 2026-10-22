@@ -42,7 +42,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -387,30 +389,14 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
 
                         if (isRegisterMode) {
-                            // MODO REGISTRO: Guardar en Realtime Database (y secundario Firestore)
+                            // MODO REGISTRO: Guardar en Realtime Database y Firestore, e ingresar de inmediato
                             rtdb.getReference("usuarios").child(cleanPhone).setValue(userMap)
-                                .addOnSuccessListener {
-                                    try {
-                                        db.collection("usuarios").document(cleanPhone).set(userMap)
-                                    } catch (_: Exception) {}
+                            try {
+                                db.collection("usuarios").document(cleanPhone).set(userMap)
+                            } catch (_: Exception) {}
 
-                                    isLoading = false
-                                    isRegisterMode = false
-                                    successMessage = "¡Registro exitoso! Ya puedes iniciar sesión."
-                                }
-                                .addOnFailureListener { e ->
-                                    // Si falla RTDB, intentar en Firestore
-                                    db.collection("usuarios").document(cleanPhone).set(userMap)
-                                        .addOnSuccessListener {
-                                            isLoading = false
-                                            isRegisterMode = false
-                                            successMessage = "¡Registro exitoso! Ya puedes iniciar sesión."
-                                        }
-                                        .addOnFailureListener { e2 ->
-                                            isLoading = false
-                                            errorMessage = "Error al registrar: ${e2.localizedMessage ?: e.localizedMessage}"
-                                        }
-                                }
+                            isLoading = false
+                            onLoginSuccess(cleanPhone, cleanUser)
                         } else {
                             // MODO INICIO DE SESIÓN: Buscar primero en Realtime Database
                             rtdb.getReference("usuarios").child(cleanPhone).get()
@@ -484,7 +470,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
                     } else {
                         Text(
-                            text = if (isRegisterMode) "REGISTRARSE EN FIREBASE" else "INICIAR SESIÓN",
+                            text = if (isRegisterMode) "REGISTRARSE" else "INICIAR SESIÓN",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = Color.Black
@@ -875,6 +861,7 @@ fun ContactosContent(userPhone: String) {
     var showAddDialog by remember { mutableStateOf(false) }
     var contactoToEdit by remember { mutableStateOf<Contacto?>(null) }
     var contactoToDelete by remember { mutableStateOf<Contacto?>(null) }
+    var selectedContactoForDetail by remember { mutableStateOf<Contacto?>(null) }
 
     val cleanPhone = userPhone.trim()
     val context = LocalContext.current
@@ -1099,9 +1086,6 @@ fun ContactosContent(userPhone: String) {
                                     )
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
-                            },
-                            onSaveToDeviceClick = {
-                                guardarEnAgendaDelDispositivo(context, contacto.nombre, contacto.telefono)
                             }
                         )
                     }
@@ -1133,8 +1117,7 @@ fun ContactoItemCard(
     contacto: Contacto,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onCallClick: () -> Unit,
-    onSaveToDeviceClick: () -> Unit
+    onCallClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1210,19 +1193,6 @@ fun ContactoItemCard(
                         contentDescription = "Llamar a ${contacto.nombre}",
                         tint = WhatsAppGreen,
                         modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                // Botón para guardar en la agenda del teléfono
-                IconButton(
-                    onClick = onSaveToDeviceClick,
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.PersonAdd,
-                        contentDescription = "Guardar en agenda del teléfono",
-                        tint = WhatsAppGreen,
-                        modifier = Modifier.size(18.dp)
                     )
                 }
 
