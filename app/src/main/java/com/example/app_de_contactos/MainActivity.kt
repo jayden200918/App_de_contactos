@@ -21,7 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.outlined.Backspace
+import androidx.compose.material.icons.automirrored.outlined.CallMade
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -30,8 +31,10 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Dialpad
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -61,18 +64,20 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Colores del tema oscuro de la app
-val DarkBg = Color(0xFF0B141A)
-val CardBg = Color(0xFF111B21)
-val TextPrimary = Color(0xFFE9EDEF)
-val TextSecondary = Color(0xFF8696A0)
-val WhatsAppGreen = Color(0xFF00A884)
-val ChipSelectedBg = Color(0xFF0C3A2D)
-val BottomBarBg = Color(0xFF0B141A)
-val BorderDark = Color(0xFF2A3942)
-val ErrorRed = Color(0xFFFF5555)
+// Colores del tema oscuro azul de la app
+val DarkBg = Color(0xFF09111E)          // Fondo azul marino profundo
+val CardBg = Color(0xFF101B2B)          // Tarjetas azul marino
+val TextPrimary = Color(0xFFF1F5F9)     // Texto blanco hielo brillante
+val TextSecondary = Color(0xFF94A3B8)   // Texto secundario gris azulado
+val AppBlue = Color(0xFF2563EB)         // Azul cobalto para acciones
+val AppLightBlue = Color(0xFF38BDF8)    // Azul claro brillante para destacados e iconos
+val WhatsAppGreen = AppLightBlue        // Alias de compatibilidad
+val ChipSelectedBg = Color(0xFF172E48)  // Fondo azul oscuro para tabs seleccionados
+val BottomBarBg = Color(0xFF070E18)     // Barra inferior azul marino profundo
+val BorderDark = Color(0xFF1E2D42)      // Bordes azul oscuro suave
+val ErrorRed = Color(0xFFFF5252)        // Rojo para acciones peligrosas/eliminar
 
-// Categorías de notas disponibles
+// Categorías de notas disponibles (gama de colores azulados e índigo)
 data class CategoriaNota(
     val nombre: String,
     val color: Color,
@@ -80,13 +85,13 @@ data class CategoriaNota(
 )
 
 val categoriasDisponibles = listOf(
-    CategoriaNota("Personal", WhatsAppGreen, "#00A884"),
-    CategoriaNota("Trabajo", Color(0xFF3498DB), "#3498DB"),
-    CategoriaNota("Importante", Color(0xFFE67E22), "#E67E22"),
-    CategoriaNota("Idea", Color(0xFF9B59B6), "#9B59B6")
+    CategoriaNota("Personal", Color(0xFF38BDF8), "#38BDF8"),   // Azul Ciel
+    CategoriaNota("Trabajo", Color(0xFF2563EB), "#2563EB"),    // Azul Cobalto
+    CategoriaNota("Importante", Color(0xFF818CF8), "#818CF8"), // Azul Índigo
+    CategoriaNota("Idea", Color(0xFF06B6D4), "#06B6D4")        // Cían
 )
 
-fun parseHexColor(hex: String, fallback: Color = WhatsAppGreen): Color {
+fun parseHexColor(hex: String, fallback: Color = AppLightBlue): Color {
     return try {
         Color(android.graphics.Color.parseColor(hex))
     } catch (_: Exception) {
@@ -101,7 +106,7 @@ data class Nota(
     val descripcion: String = "",
     val fecha: String = "",
     val categoria: String = "Personal",
-    val colorHex: String = "#00A884"
+    val colorHex: String = "#38BDF8"
 )
 
 // Modelo de datos para los contactos (con campo de detalle/nota)
@@ -111,6 +116,25 @@ data class Contacto(
     val telefono: String = "",
     val detalle: String = "",
     val fechaAgregado: String = ""
+)
+
+// Modelo de datos para el registro del historial de llamadas
+data class LlamadaRegistro(
+    val id: String = "",
+    val nombreContacto: String = "Desconocido",
+    val telefono: String = "",
+    val fechaHora: String = "",
+    val tipo: String = "saliente"
+)
+
+// Informes para el teclado de marcado numérico
+data class DialButtonInfo(val number: String, val letters: String = "")
+
+val dialPadMatrix = listOf(
+    listOf(DialButtonInfo("1", ""), DialButtonInfo("2", "ABC"), DialButtonInfo("3", "DEF")),
+    listOf(DialButtonInfo("4", "GHI"), DialButtonInfo("5", "JKL"), DialButtonInfo("6", "MNO")),
+    listOf(DialButtonInfo("7", "PQRS"), DialButtonInfo("8", "TUV"), DialButtonInfo("9", "WXYZ")),
+    listOf(DialButtonInfo("*", ""), DialButtonInfo("0", "+"), DialButtonInfo("#", ""))
 )
 
 // Gestor de sesión persistente usando SharedPreferences
@@ -207,7 +231,8 @@ fun ContactosAppTheme(content: @Composable () -> Unit) {
         colorScheme = darkColorScheme(
             background = DarkBg,
             surface = CardBg,
-            primary = WhatsAppGreen,
+            primary = AppBlue,
+            secondary = AppLightBlue,
             onBackground = TextPrimary,
             onSurface = TextPrimary
         ),
@@ -230,12 +255,12 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
             .fillMaxSize()
             .background(DarkBg)
     ) {
-        // Franja superior
+        // Franja superior azul oscuro
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.32f)
-                .background(Color(0xFF0F1A1C)),
+                .background(Color(0xFF060D17)),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -249,7 +274,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                 Text(
                     text = if (isRegisterMode) "Crea tu cuenta" else "Bienvenido de nuevo",
                     fontSize = 14.sp,
-                    color = WhatsAppGreen
+                    color = AppLightBlue
                 )
             }
         }
@@ -292,14 +317,14 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         Icon(
                             imageVector = Icons.Outlined.Person,
                             contentDescription = "Nombre de usuario",
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     singleLine = true,
                     isError = (errorMessage != null && username.isBlank()),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         errorBorderColor = ErrorRed,
                         focusedTextColor = TextPrimary,
@@ -322,14 +347,14 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         Icon(
                             imageVector = Icons.Outlined.Phone,
                             contentDescription = "Número de teléfono",
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     singleLine = true,
                     isError = (errorMessage != null && phone.isBlank()),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         errorBorderColor = ErrorRed,
                         focusedTextColor = TextPrimary,
@@ -355,7 +380,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = successMessage!!,
-                        color = WhatsAppGreen,
+                        color = AppLightBlue,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
@@ -456,7 +481,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         }
                     },
                     enabled = !isLoading,
-                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -464,7 +489,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
-                            color = Color.Black,
+                            color = Color.White,
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp
                         )
@@ -473,7 +498,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                             text = if (isRegisterMode) "REGISTRARSE" else "INICIAR SESIÓN",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = Color.Black
+                            color = Color.White
                         )
                     }
                 }
@@ -483,7 +508,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                 // Cambiar entre Iniciar Sesión y Registrarse
                 Text(
                     text = if (isRegisterMode) "¿YA TIENES CUENTA?\nINICIA SESIÓN" else "¿NO TIENES CUENTA?\nREGÍSTRATE",
-                    color = WhatsAppGreen,
+                    color = AppLightBlue,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
@@ -507,7 +532,7 @@ fun MainScreen(onLogout: () -> Unit) {
     val userName = remember { SessionManager.getUserName(context) }
     val userPhone = remember { SessionManager.getUserPhone(context) }
 
-    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Chats, 1: Notas, 2: Llamadas
+    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Contactos, 1: Notas, 2: Llamadas
     var showMenu by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
 
@@ -540,7 +565,7 @@ fun MainScreen(onLogout: () -> Unit) {
                             Icon(
                                 imageVector = Icons.Outlined.AccountCircle,
                                 contentDescription = "Perfil de usuario",
-                                tint = TextPrimary,
+                                tint = AppLightBlue,
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -557,14 +582,14 @@ fun MainScreen(onLogout: () -> Unit) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(36.dp)
-                                                    .background(WhatsAppGreen, CircleShape),
+                                                    .background(AppBlue, CircleShape),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = if (userName.isNotBlank()) userName.take(1).uppercase() else "U",
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 16.sp,
-                                                    color = Color.Black
+                                                    color = Color.White
                                                 )
                                             }
                                             Spacer(modifier = Modifier.width(12.dp))
@@ -643,7 +668,7 @@ fun MainScreen(onLogout: () -> Unit) {
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = TextPrimary,
+                        selectedIconColor = AppLightBlue,
                         selectedTextColor = TextPrimary,
                         indicatorColor = ChipSelectedBg,
                         unselectedIconColor = TextSecondary,
@@ -668,7 +693,7 @@ fun MainScreen(onLogout: () -> Unit) {
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = TextPrimary,
+                        selectedIconColor = AppLightBlue,
                         selectedTextColor = TextPrimary,
                         indicatorColor = ChipSelectedBg,
                         unselectedIconColor = TextSecondary,
@@ -693,7 +718,7 @@ fun MainScreen(onLogout: () -> Unit) {
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = TextPrimary,
+                        selectedIconColor = AppLightBlue,
                         selectedTextColor = TextPrimary,
                         indicatorColor = ChipSelectedBg,
                         unselectedIconColor = TextSecondary,
@@ -712,7 +737,7 @@ fun MainScreen(onLogout: () -> Unit) {
             when (selectedBottomTab) {
                 0 -> ContactosContent(userPhone = userPhone)
                 1 -> NotasContent(userPhone = userPhone)
-                2 -> LlamadasContent()
+                2 -> LlamadasContent(userPhone = userPhone)
             }
         }
     }
@@ -762,7 +787,7 @@ fun LogoutConfirmationDialog(
             ) {
                 if (userName.isNotBlank() || userPhone.isNotBlank()) {
                     Surface(
-                        color = Color(0xFF16232B),
+                        color = Color(0xFF162338),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -775,14 +800,14 @@ fun LogoutConfirmationDialog(
                             Box(
                                 modifier = Modifier
                                     .size(42.dp)
-                                    .background(WhatsAppGreen, CircleShape),
+                                    .background(AppBlue, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = if (userName.isNotBlank()) userName.take(1).uppercase() else "U",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
-                                    color = Color.Black
+                                    color = Color.White
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -940,15 +965,10 @@ fun ContactosContent(userPhone: String) {
             },
             onCall = {
                 val tel = selectedContactoForDetail?.telefono ?: ""
+                val nom = selectedContactoForDetail?.nombre ?: "Desconocido"
                 selectedContactoForDetail = null
                 if (tel.isNotBlank()) {
-                    try {
-                        val intent = android.content.Intent(
-                            android.content.Intent.ACTION_DIAL,
-                            android.net.Uri.parse("tel:$tel")
-                        )
-                        context.startActivity(intent)
-                    } catch (_: Exception) {}
+                    realizarYLlamadaYRegistrar(context, cleanPhone, tel, nom)
                 }
             }
         )
@@ -1033,12 +1053,12 @@ fun ContactosContent(userPhone: String) {
                         Icon(
                             imageVector = Icons.Outlined.Person,
                             contentDescription = null,
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1055,7 +1075,7 @@ fun ContactosContent(userPhone: String) {
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = WhatsAppGreen)
+                    CircularProgressIndicator(color = AppLightBlue)
                 }
             } else if (contactos.isEmpty()) {
                 Column(
@@ -1068,7 +1088,7 @@ fun ContactosContent(userPhone: String) {
                     Icon(
                         imageVector = Icons.Outlined.ContactPage,
                         contentDescription = null,
-                        tint = WhatsAppGreen,
+                        tint = AppLightBlue,
                         modifier = Modifier.size(72.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1113,13 +1133,7 @@ fun ContactosContent(userPhone: String) {
                             onEditClick = { contactoToEdit = contacto },
                             onDeleteClick = { contactoToDelete = contacto },
                             onCallClick = {
-                                try {
-                                    val intent = android.content.Intent(
-                                        android.content.Intent.ACTION_DIAL,
-                                        android.net.Uri.parse("tel:${contacto.telefono}")
-                                    )
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
+                                realizarYLlamadaYRegistrar(context, cleanPhone, contacto.telefono, contacto.nombre)
                             }
                         )
                     }
@@ -1130,8 +1144,8 @@ fun ContactosContent(userPhone: String) {
         // Botón Flotante (FAB) para Agregar Nuevo Contacto
         FloatingActionButton(
             onClick = { showAddDialog = true },
-            containerColor = WhatsAppGreen,
-            contentColor = Color.Black,
+            containerColor = AppBlue,
+            contentColor = Color.White,
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -1178,7 +1192,7 @@ fun ContactoItemCard(
                 Box(
                     modifier = Modifier
                         .size(46.dp)
-                        .background(WhatsAppGreen.copy(alpha = 0.2f), CircleShape)
+                        .background(AppBlue.copy(alpha = 0.25f), CircleShape)
                         .padding(2.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1186,7 +1200,7 @@ fun ContactoItemCard(
                         text = if (contacto.nombre.isNotBlank()) contacto.nombre.take(1).uppercase() else "C",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = WhatsAppGreen
+                        color = AppLightBlue
                     )
                 }
 
@@ -1224,14 +1238,14 @@ fun ContactoItemCard(
                             Icon(
                                 imageVector = Icons.Outlined.Info,
                                 contentDescription = null,
-                                tint = WhatsAppGreen,
+                                tint = AppLightBlue,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = contacto.detalle,
                                 fontSize = 12.sp,
-                                color = WhatsAppGreen,
+                                color = AppLightBlue,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1249,7 +1263,7 @@ fun ContactoItemCard(
                     Icon(
                         imageVector = Icons.Outlined.Phone,
                         contentDescription = "Llamar a ${contacto.nombre}",
-                        tint = WhatsAppGreen,
+                        tint = AppLightBlue,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1306,14 +1320,14 @@ fun VerDetalleContactoDialog(
                     Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .background(WhatsAppGreen, CircleShape),
+                            .background(AppBlue, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = if (contacto.nombre.isNotBlank()) contacto.nombre.take(1).uppercase() else "C",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
-                            color = Color.Black
+                            color = Color.White
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1341,7 +1355,7 @@ fun VerDetalleContactoDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Surface(
-                    color = Color(0xFF16232B),
+                    color = Color(0xFF162338),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1359,7 +1373,7 @@ fun VerDetalleContactoDialog(
                             Icon(
                                 imageVector = Icons.Outlined.Phone,
                                 contentDescription = null,
-                                tint = WhatsAppGreen,
+                                tint = AppLightBlue,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -1444,17 +1458,17 @@ fun VerDetalleContactoDialog(
 
                     Button(
                         onClick = onCall,
-                        colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                        colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Phone,
                             contentDescription = null,
-                            tint = Color.Black,
+                            tint = Color.White,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Llamar", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Llamar", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1487,13 +1501,13 @@ fun AgregarContactoDialog(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(WhatsAppGreen.copy(alpha = 0.15f), CircleShape),
+                            .background(AppBlue.copy(alpha = 0.2f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Person,
                             contentDescription = null,
-                            tint = WhatsAppGreen,
+                            tint = AppLightBlue,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -1537,12 +1551,12 @@ fun AgregarContactoDialog(
                         Icon(
                             imageVector = Icons.Outlined.Person,
                             contentDescription = null,
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1564,13 +1578,13 @@ fun AgregarContactoDialog(
                         Icon(
                             imageVector = Icons.Outlined.Phone,
                             contentDescription = null,
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1593,13 +1607,13 @@ fun AgregarContactoDialog(
                         Icon(
                             imageVector = Icons.Outlined.Info,
                             contentDescription = null,
-                            tint = TextSecondary
+                            tint = AppLightBlue
                         )
                     },
                     minLines = 2,
                     maxLines = 4,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1636,13 +1650,13 @@ fun AgregarContactoDialog(
 
                         onSaveInApp(cleanNombre, cleanTelefono, cleanDetalle)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
                 ) {
-                    Text("Guardar en la App", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Guardar en la App", color = Color.White, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1660,8 +1674,8 @@ fun AgregarContactoDialog(
 
                         onSaveToDevice(cleanNombre, cleanTelefono, cleanDetalle)
                     },
-                    border = BorderStroke(1.dp, WhatsAppGreen),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WhatsAppGreen),
+                    border = BorderStroke(1.dp, AppLightBlue),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppLightBlue),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1750,7 +1764,7 @@ fun EditarContactoDialog(
                     label = { Text("Nombre del contacto", color = TextSecondary) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1770,7 +1784,7 @@ fun EditarContactoDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1790,7 +1804,7 @@ fun EditarContactoDialog(
                     minLines = 2,
                     maxLines = 4,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = WhatsAppGreen,
+                        focusedBorderColor = AppLightBlue,
                         unfocusedBorderColor = BorderDark,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1823,10 +1837,10 @@ fun EditarContactoDialog(
 
                     onSave(cleanNombre, cleanTelefono, cleanDetalle)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Guardar Cambios", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Guardar Cambios", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1870,7 +1884,7 @@ fun NotasContent(userPhone: String) {
                     val descripcion = child.child("descripcion").getValue(String::class.java) ?: ""
                     val fecha = child.child("fecha").getValue(String::class.java) ?: ""
                     val categoria = child.child("categoria").getValue(String::class.java) ?: "Personal"
-                    val colorHex = child.child("colorHex").getValue(String::class.java) ?: "#00A884"
+                    val colorHex = child.child("colorHex").getValue(String::class.java) ?: "#38BDF8"
 
                     if (id.isNotBlank()) {
                         list.add(
@@ -1972,7 +1986,7 @@ fun NotasContent(userPhone: String) {
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = WhatsAppGreen)
+                CircularProgressIndicator(color = AppLightBlue)
             }
         } else if (notas.isEmpty()) {
             Column(
@@ -1985,7 +1999,7 @@ fun NotasContent(userPhone: String) {
                 Icon(
                     imageVector = Icons.Outlined.EditNote,
                     contentDescription = null,
-                    tint = WhatsAppGreen,
+                    tint = AppLightBlue,
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -2024,8 +2038,8 @@ fun NotasContent(userPhone: String) {
         // Botón Flotante (FAB) para Agregar Nota
         FloatingActionButton(
             onClick = { showAddDialog = true },
-            containerColor = WhatsAppGreen,
-            contentColor = Color.Black,
+            containerColor = AppBlue,
+            contentColor = Color.White,
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -2243,7 +2257,7 @@ fun VerDetalleNotaDialog(
                             Icon(
                                 imageVector = Icons.Outlined.Schedule,
                                 contentDescription = null,
-                                tint = WhatsAppGreen,
+                                tint = AppLightBlue,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -2260,7 +2274,7 @@ fun VerDetalleNotaDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Surface(
-                        color = Color(0xFF16232B),
+                        color = Color(0xFF162338),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -2291,7 +2305,7 @@ fun VerDetalleNotaDialog(
                             Surface(
                                 onClick = { editCategoria = cat },
                                 shape = RoundedCornerShape(20.dp),
-                                color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF16232B),
+                                color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF162338),
                                 border = BorderStroke(
                                     width = if (isSelected) 2.dp else 1.dp,
                                     color = if (isSelected) cat.color else BorderDark
@@ -2373,17 +2387,17 @@ fun VerDetalleNotaDialog(
             if (!isEditMode) {
                 Button(
                     onClick = { isEditMode = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Edit,
                         contentDescription = "Editar",
-                        tint = Color.Black,
+                        tint = Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Editar", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Editar", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             } else {
                 Button(
@@ -2414,12 +2428,12 @@ fun VerDetalleNotaDialog(
                 ) {
                     if (isSavingChanges) {
                         CircularProgressIndicator(
-                            color = Color.Black,
+                            color = Color.White,
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("Guardar Cambios", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Guardar Cambios", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2483,13 +2497,13 @@ fun AgregarNotaDialog(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(WhatsAppGreen.copy(alpha = 0.15f), CircleShape),
+                            .background(AppBlue.copy(alpha = 0.2f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.EditNote,
                             contentDescription = null,
-                            tint = WhatsAppGreen,
+                            tint = AppLightBlue,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -2539,7 +2553,7 @@ fun AgregarNotaDialog(
                         Surface(
                             onClick = { selectedCategory = cat },
                             shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF16232B),
+                            color = if (isSelected) cat.color.copy(alpha = 0.25f) else Color(0xFF162338),
                             border = BorderStroke(
                                 width = if (isSelected) 2.dp else 1.dp,
                                 color = if (isSelected) cat.color else BorderDark
@@ -2677,7 +2691,7 @@ fun AgregarNotaDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = selectedCategory.color),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Guardar Nota", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Guardar Nota", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -2779,6 +2793,88 @@ private fun eliminarNotaDeFirebase(phone: String, noteId: String) {
         }
 }
 
+// Funciones auxiliares de llamadas y registro
+private fun realizarYLlamadaYRegistrar(
+    context: Context,
+    userPhone: String,
+    telefonoDestino: String,
+    nombreContacto: String
+) {
+    val cleanTel = telefonoDestino.trim()
+    if (cleanTel.isBlank()) return
+
+    // Registrar llamada en Firebase
+    registrarLlamadaEnFirebase(userPhone, cleanTel, nombreContacto)
+
+    // Abrir marcador del celular
+    try {
+        val intent = android.content.Intent(
+            android.content.Intent.ACTION_DIAL,
+            android.net.Uri.parse("tel:$cleanTel")
+        )
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Log.e("Dialer", "Error al abrir marcador", e)
+    }
+}
+
+private fun registrarLlamadaEnFirebase(
+    userPhone: String,
+    telefonoDestino: String,
+    nombreContacto: String
+) {
+    if (userPhone.isBlank() || telefonoDestino.isBlank()) return
+
+    val dateStr = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date())
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val callsRef = rtdb.getReference("usuarios").child(userPhone).child("llamadas")
+    val callId = callsRef.push().key ?: System.currentTimeMillis().toString()
+
+    val callMap = hashMapOf(
+        "id" to callId,
+        "nombreContacto" to nombreContacto,
+        "telefono" to telefonoDestino,
+        "fechaHora" to dateStr,
+        "tipo" to "saliente"
+    )
+
+    callsRef.child(callId).setValue(callMap)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("llamadas")
+                    .document(callId)
+                    .set(callMap)
+            } catch (_: Exception) {}
+        }
+}
+
+private fun eliminarLlamadaDeFirebase(userPhone: String, callId: String) {
+    if (userPhone.isBlank() || callId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    rtdb.getReference("usuarios").child(userPhone).child("llamadas").child(callId).removeValue()
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("llamadas")
+                    .document(callId)
+                    .delete()
+            } catch (_: Exception) {}
+        }
+}
+
+private fun vaciarHistorialDeFirebase(userPhone: String) {
+    if (userPhone.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    rtdb.getReference("usuarios").child(userPhone).child("llamadas").removeValue()
+}
+
 // Funciones auxiliares de contactos para Firebase y agenda
 private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, telefono: String) {
     try {
@@ -2863,33 +2959,543 @@ private fun eliminarContactoDeFirebase(userPhone: String, contactId: String) {
 }
 
 @Composable
-fun LlamadasContent() {
+fun LlamadasContent(userPhone: String) {
+    var selectedSubTab by remember { mutableIntStateOf(0) } // 0: Marcador, 1: Historial
+    var phoneNumber by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val cleanPhone = userPhone.trim()
+
+    val contactos = remember { mutableStateListOf<Contacto>() }
+    val historialLlamadas = remember { mutableStateListOf<LlamadaRegistro>() }
+    var isLoadingHistorial by remember { mutableStateOf(true) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+
+    // Cargar contactos guardados del usuario
+    DisposableEffect(cleanPhone) {
+        if (cleanPhone.isBlank()) return@DisposableEffect onDispose {}
+
+        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+        val contactsRef = rtdb.getReference("usuarios").child(cleanPhone).child("contactos")
+
+        val contactsListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<Contacto>()
+                for (child in snapshot.children) {
+                    val id = child.key ?: ""
+                    val nombre = child.child("nombre").getValue(String::class.java) ?: ""
+                    val telefono = child.child("telefono").getValue(String::class.java) ?: ""
+                    if (id.isNotBlank() && telefono.isNotBlank()) {
+                        list.add(Contacto(id = id, nombre = nombre, telefono = telefono))
+                    }
+                }
+                contactos.clear()
+                contactos.addAll(list.sortedBy { it.nombre.lowercase() })
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        }
+
+        contactsRef.addValueEventListener(contactsListener)
+
+        onDispose {
+            contactsRef.removeEventListener(contactsListener)
+        }
+    }
+
+    // Cargar historial de llamadas en tiempo real desde Firebase
+    DisposableEffect(cleanPhone) {
+        if (cleanPhone.isBlank()) {
+            isLoadingHistorial = false
+            return@DisposableEffect onDispose {}
+        }
+
+        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+        val callsRef = rtdb.getReference("usuarios").child(cleanPhone).child("llamadas")
+
+        val callsListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<LlamadaRegistro>()
+                for (child in snapshot.children) {
+                    val id = child.key ?: ""
+                    val nombreContacto = child.child("nombreContacto").getValue(String::class.java) ?: "Desconocido"
+                    val telefono = child.child("telefono").getValue(String::class.java) ?: ""
+                    val fechaHora = child.child("fechaHora").getValue(String::class.java) ?: ""
+                    val tipo = child.child("tipo").getValue(String::class.java) ?: "saliente"
+
+                    if (id.isNotBlank() && telefono.isNotBlank()) {
+                        list.add(
+                            LlamadaRegistro(
+                                id = id,
+                                nombreContacto = nombreContacto,
+                                telefono = telefono,
+                                fechaHora = fechaHora,
+                                tipo = tipo
+                            )
+                        )
+                    }
+                }
+                historialLlamadas.clear()
+                historialLlamadas.addAll(list.reversed()) // Mostrar las más recientes primero
+                isLoadingHistorial = false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                isLoadingHistorial = false
+            }
+        }
+
+        callsRef.addValueEventListener(callsListener)
+
+        onDispose {
+            callsRef.removeEventListener(callsListener)
+        }
+    }
+
+    // Diálogo de confirmación para vaciar historial
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = CardBg,
+            title = {
+                Text("¿Vaciar historial?", color = TextPrimary, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Se eliminarán todas las llamadas registradas.", color = TextSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearHistoryDialog = false
+                        vaciarHistorialDeFirebase(cleanPhone)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                ) {
+                    Text("Vaciar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showClearHistoryDialog = false },
+                    border = BorderStroke(1.dp, BorderDark)
+                ) {
+                    Text("Cancelar", color = TextPrimary)
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Phone,
-            contentDescription = null,
-            tint = WhatsAppGreen,
-            modifier = Modifier.size(64.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Historial de Llamadas",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
+        // Selector de Pestaña Superior: Marcador vs Historial
+        TabRow(
+            selectedTabIndex = selectedSubTab,
+            containerColor = CardBg,
+            contentColor = AppLightBlue,
+            indicator = { },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Tab(
+                selected = selectedSubTab == 0,
+                onClick = { selectedSubTab = 0 },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Dialpad,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Marcador", fontWeight = FontWeight.Bold)
+                    }
+                },
+                selectedContentColor = AppLightBlue,
+                unselectedContentColor = TextSecondary
+            )
+
+            Tab(
+                selected = selectedSubTab == 1,
+                onClick = { selectedSubTab = 1 },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Historial (${historialLlamadas.size})", fontWeight = FontWeight.Bold)
+                    }
+                },
+                selectedContentColor = AppLightBlue,
+                unselectedContentColor = TextSecondary
+            )
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Aquí verás el registro de llamadas recientes.",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            textAlign = TextAlign.Center
-        )
+
+        if (selectedSubTab == 0) {
+            // VISTA 1: MARCADOR TELEFÓNICO
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Marcado Rápido de Contactos Guardados
+                    if (contactos.isNotEmpty()) {
+                        Text(
+                            text = "Marcado Rápido:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            modifier = Modifier
+                                .align(Alignment.Start)
+                                .padding(horizontal = 8.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(contactos, key = { it.id }) { contacto ->
+                                Surface(
+                                    onClick = { phoneNumber = contacto.telefono },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = CardBg,
+                                    border = BorderStroke(1.dp, BorderDark)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(AppBlue.copy(alpha = 0.25f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (contacto.nombre.isNotBlank()) contacto.nombre.take(1).uppercase() else "C",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = AppLightBlue
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = contacto.nombre,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TextPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    // Campo de despliegue del número
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = if (phoneNumber.isBlank()) "Ingresa número..." else phoneNumber,
+                            fontSize = if (phoneNumber.length > 12) 22.sp else 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (phoneNumber.isBlank()) TextSecondary.copy(alpha = 0.5f) else TextPrimary,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (phoneNumber.isNotEmpty()) {
+                            IconButton(
+                                onClick = {
+                                    if (phoneNumber.isNotEmpty()) {
+                                        phoneNumber = phoneNumber.dropLast(1)
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.Backspace,
+                                    contentDescription = "Borrar",
+                                    tint = AppLightBlue
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        color = BorderDark,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+                    )
+                }
+
+                // Teclado Numérico (Dial Pad)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    dialPadMatrix.forEach { row ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(24.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            row.forEach { keyInfo ->
+                                Surface(
+                                    onClick = {
+                                        phoneNumber += keyInfo.number
+                                    },
+                                    shape = CircleShape,
+                                    color = CardBg,
+                                    border = BorderStroke(1.dp, BorderDark),
+                                    modifier = Modifier.size(64.dp)
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = keyInfo.number,
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        if (keyInfo.letters.isNotBlank()) {
+                                            Text(
+                                                text = keyInfo.letters,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Botón verde para realizar la llamada y registrar en historial
+                    Button(
+                        onClick = {
+                            val cleanTel = phoneNumber.trim()
+                            if (cleanTel.isNotBlank()) {
+                                val matchContact = contactos.find { it.telefono.trim() == cleanTel }
+                                val contactName = matchContact?.nombre ?: "Desconocido"
+                                realizarYLlamadaYRegistrar(context, cleanPhone, cleanTel, contactName)
+                            }
+                        },
+                        enabled = phoneNumber.isNotBlank(),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF22C55E), // Verde llamada
+                            disabledContainerColor = Color(0xFF162332)
+                        ),
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = "Realizar llamada",
+                            tint = if (phoneNumber.isNotBlank()) Color.White else TextSecondary,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+            }
+        } else {
+            // VISTA 2: HISTORIAL DE LLAMADAS
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (historialLlamadas.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Llamadas recientes",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+
+                        TextButton(onClick = { showClearHistoryDialog = true }) {
+                            Text("Vaciar historial", color = ErrorRed, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                if (isLoadingHistorial) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AppLightBlue)
+                    }
+                } else if (historialLlamadas.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = null,
+                            tint = AppLightBlue,
+                            modifier = Modifier.size(72.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Historial vacío",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Las llamadas que realices desde el marcador o tus contactos se registrarán aquí.",
+                            fontSize = 14.sp,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        items(historialLlamadas, key = { it.id }) { registro ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = CardBg),
+                                border = BorderStroke(1.dp, BorderDark)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .background(Color(0xFF1B324B), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Outlined.CallMade,
+                                                contentDescription = "Llamada saliente",
+                                                tint = Color(0xFF22C55E),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column {
+                                            Text(
+                                                text = if (registro.nombreContacto.isNotBlank() && registro.nombreContacto != "Desconocido") {
+                                                    registro.nombreContacto
+                                                } else {
+                                                    registro.telefono
+                                                },
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            if (registro.nombreContacto.isNotBlank() && registro.nombreContacto != "Desconocido") {
+                                                Text(
+                                                    text = registro.telefono,
+                                                    fontSize = 12.sp,
+                                                    color = TextSecondary
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+
+                                            Text(
+                                                text = "Saliente • ${registro.fechaHora}",
+                                                fontSize = 11.sp,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        // Botón para devolver la llamada directamente
+                                        IconButton(
+                                            onClick = {
+                                                realizarYLlamadaYRegistrar(
+                                                    context,
+                                                    cleanPhone,
+                                                    registro.telefono,
+                                                    registro.nombreContacto
+                                                )
+                                            },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Phone,
+                                                contentDescription = "Llamar",
+                                                tint = Color(0xFF22C55E),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                eliminarLlamadaDeFirebase(cleanPhone, registro.id)
+                                            },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Delete,
+                                                contentDescription = "Eliminar de historial",
+                                                tint = ErrorRed,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
