@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,7 +24,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.automirrored.outlined.CallMade
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -118,6 +121,15 @@ data class Contacto(
     val fechaAgregado: String = ""
 )
 
+// Modelo de datos para mensajes de Chat en tiempo real
+data class MensajeChat(
+    val id: String = "",
+    val emisorTelefono: String = "",
+    val emisorNombre: String = "",
+    val texto: String = "",
+    val fechaHora: String = ""
+)
+
 // Modelo de datos para el registro del historial de llamadas
 data class LlamadaRegistro(
     val id: String = "",
@@ -179,8 +191,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Pruebas de conexión Firebase
-        probarConexionesFirebase()
+        // Pruebas de conexión
+        probarConexiones()
 
         setContent {
             val context = LocalContext.current
@@ -215,12 +227,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun probarConexionesFirebase() {
+    private fun probarConexiones() {
         try {
             val app = FirebaseApp.getInstance()
-            Log.d("FirebaseCheck", "¡Firebase conectado correctamente!: ${app.name}")
+            Log.d("AppCheck", "¡Servicio conectado correctamente!: ${app.name}")
         } catch (e: Exception) {
-            Log.e("FirebaseCheck", "Error Firebase", e)
+            Log.e("AppCheck", "Error de conexión", e)
         }
     }
 }
@@ -414,7 +426,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
 
                         if (isRegisterMode) {
-                            // MODO REGISTRO: Guardar en Realtime Database y Firestore, e ingresar de inmediato
+                            // MODO REGISTRO: Guardar en Base de Datos e ingresar de inmediato
                             rtdb.getReference("usuarios").child(cleanPhone).setValue(userMap)
                             try {
                                 db.collection("usuarios").document(cleanPhone).set(userMap)
@@ -423,7 +435,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                             isLoading = false
                             onLoginSuccess(cleanPhone, cleanUser)
                         } else {
-                            // MODO INICIO DE SESIÓN: Buscar primero en Realtime Database
+                            // MODO INICIO DE SESIÓN: Buscar primero en la Base de Datos
                             rtdb.getReference("usuarios").child(cleanPhone).get()
                                 .addOnSuccessListener { snapshot ->
                                     if (snapshot.exists()) {
@@ -436,7 +448,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                             errorMessage = "El nombre de usuario no coincide con el número ingresado."
                                         }
                                     } else {
-                                        // Buscar en Firestore por si acaso estuvo registrado allí
+                                        // Buscar respaldo
                                         db.collection("usuarios").document(cleanPhone).get()
                                             .addOnSuccessListener { document ->
                                                 isLoading = false
@@ -458,7 +470,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                     }
                                 }
                                 .addOnFailureListener {
-                                    // Si falla RTDB, intentar buscar en Firestore
+                                    // Intento secundario
                                     db.collection("usuarios").document(cleanPhone).get()
                                         .addOnSuccessListener { document ->
                                             isLoading = false
@@ -887,11 +899,12 @@ fun ContactosContent(userPhone: String) {
     var contactoToEdit by remember { mutableStateOf<Contacto?>(null) }
     var contactoToDelete by remember { mutableStateOf<Contacto?>(null) }
     var selectedContactoForDetail by remember { mutableStateOf<Contacto?>(null) }
+    var contactoForChat by remember { mutableStateOf<Contacto?>(null) }
 
     val cleanPhone = userPhone.trim()
     val context = LocalContext.current
 
-    // Cargar contactos desde Firebase Realtime Database
+    // Cargar contactos desde la base de datos
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoading = false
@@ -932,17 +945,29 @@ fun ContactosContent(userPhone: String) {
         }
     }
 
+    // Pantalla / Diálogo de Chat en Tiempo Real con Jetpack Compose
+    if (contactoForChat != null) {
+        val myName = SessionManager.getUserName(context)
+        PantallaChatDialog(
+            miTelefono = cleanPhone,
+            miNombre = if (myName.isNotBlank()) myName else "Yo",
+            contactoNombre = contactoForChat!!.nombre,
+            contactoTelefono = contactoForChat!!.telefono,
+            onDismiss = { contactoForChat = null }
+        )
+    }
+
     // Diálogo para agregar nuevo contacto
     if (showAddDialog) {
         AgregarContactoDialog(
             onDismiss = { showAddDialog = false },
             onSaveInApp = { nombre, telefono, detalle ->
                 showAddDialog = false
-                guardarContactoEnFirebase(cleanPhone, nombre, telefono, detalle)
+                guardarContactoEnBD(cleanPhone, nombre, telefono, detalle)
             },
             onSaveToDevice = { nombre, telefono, detalle ->
                 showAddDialog = false
-                guardarContactoEnFirebase(cleanPhone, nombre, telefono, detalle)
+                guardarContactoEnBD(cleanPhone, nombre, telefono, detalle)
                 guardarEnAgendaDelDispositivo(context, nombre, telefono)
             }
         )
@@ -970,6 +995,13 @@ fun ContactosContent(userPhone: String) {
                 if (tel.isNotBlank()) {
                     realizarYLlamadaYRegistrar(context, cleanPhone, tel, nom)
                 }
+            },
+            onChat = {
+                val target = selectedContactoForDetail
+                selectedContactoForDetail = null
+                if (target != null) {
+                    contactoForChat = target
+                }
             }
         )
     }
@@ -983,7 +1015,7 @@ fun ContactosContent(userPhone: String) {
                 val targetId = contactoToEdit?.id ?: ""
                 contactoToEdit = null
                 if (targetId.isNotBlank()) {
-                    actualizarContactoEnFirebase(cleanPhone, targetId, nuevoNombre, nuevoTelefono, nuevoDetalle)
+                    actualizarContactoEnBD(cleanPhone, targetId, nuevoNombre, nuevoTelefono, nuevoDetalle)
                 }
             }
         )
@@ -1010,7 +1042,7 @@ fun ContactosContent(userPhone: String) {
                         val target = contactoToDelete
                         contactoToDelete = null
                         if (target != null) {
-                            eliminarContactoDeFirebase(cleanPhone, target.id)
+                            eliminarContactoDeBD(cleanPhone, target.id)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
@@ -1134,6 +1166,9 @@ fun ContactosContent(userPhone: String) {
                             onDeleteClick = { contactoToDelete = contacto },
                             onCallClick = {
                                 realizarYLlamadaYRegistrar(context, cleanPhone, contacto.telefono, contacto.nombre)
+                            },
+                            onChatClick = {
+                                contactoForChat = contacto
                             }
                         )
                     }
@@ -1166,7 +1201,8 @@ fun ContactoItemCard(
     onCardClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onCallClick: () -> Unit
+    onCallClick: () -> Unit,
+    onChatClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -1258,39 +1294,52 @@ fun ContactoItemCard(
                 // Botón para llamar
                 IconButton(
                     onClick = onCallClick,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Phone,
                         contentDescription = "Llamar a ${contacto.nombre}",
                         tint = AppLightBlue,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+
+                // Botón para abir Chat interactivo en tiempo real
+                IconButton(
+                    onClick = onChatClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Chat,
+                        contentDescription = "Chat con ${contacto.nombre}",
+                        tint = AppLightBlue,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
 
                 // Botón para editar
                 IconButton(
                     onClick = onEditClick,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Edit,
                         contentDescription = "Editar contacto",
                         tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
                 // Botón para eliminar
                 IconButton(
                     onClick = onDeleteClick,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
                         contentDescription = "Eliminar contacto",
                         tint = ErrorRed,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
@@ -1304,7 +1353,8 @@ fun VerDetalleContactoDialog(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onCall: () -> Unit
+    onCall: () -> Unit,
+    onChat: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1417,28 +1467,67 @@ fun VerDetalleContactoDialog(
             }
         },
         confirmButton = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = onDelete,
-                    border = BorderStroke(1.dp, ErrorRed),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                    shape = RoundedCornerShape(10.dp)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = null,
-                        tint = ErrorRed,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Eliminar", color = ErrorRed)
+                    OutlinedButton(
+                        onClick = onChat,
+                        border = BorderStroke(1.dp, AppLightBlue),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppLightBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Chat,
+                            contentDescription = null,
+                            tint = AppLightBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Chat App", fontSize = 13.sp)
+                    }
+
+                    Button(
+                        onClick = onCall,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Llamar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
 
-                Row {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedButton(
+                        onClick = onDelete,
+                        border = BorderStroke(1.dp, ErrorRed),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = null,
+                            tint = ErrorRed,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Eliminar", color = ErrorRed, fontSize = 13.sp)
+                    }
+
                     OutlinedButton(
                         onClick = onEdit,
                         border = BorderStroke(1.dp, BorderDark),
@@ -1451,29 +1540,374 @@ fun VerDetalleContactoDialog(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Editar", color = TextPrimary)
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = onCall,
-                        colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Phone,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Llamar", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Editar", color = TextPrimary, fontSize = 13.sp)
                     }
                 }
             }
         }
     )
+}
+
+// Pantalla y Diálogo de Chat en Tiempo Real
+@Composable
+fun PantallaChatDialog(
+    miTelefono: String,
+    miNombre: String,
+    contactoNombre: String,
+    contactoTelefono: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var textoMensaje by remember { mutableStateOf("") }
+    val mensajes = remember { mutableStateListOf<MensajeChat>() }
+    var isLoadingMensajes by remember { mutableStateOf(true) }
+
+    val cleanMyPhone = miTelefono.trim()
+    val cleanContactPhone = contactoTelefono.trim()
+
+    // Generar una ID de sala de chat determinista y única para ambos usuarios
+    val chatRoomId = remember(cleanMyPhone, cleanContactPhone) {
+        if (cleanMyPhone < cleanContactPhone) {
+            "${cleanMyPhone}_${cleanContactPhone}"
+        } else {
+            "${cleanContactPhone}_${cleanMyPhone}"
+        }
+    }
+
+    // Escuchar mensajes de la sala de chat en tiempo real
+    DisposableEffect(chatRoomId) {
+        if (chatRoomId.isBlank()) {
+            isLoadingMensajes = false
+            return@DisposableEffect onDispose {}
+        }
+
+        val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+        val ref = rtdb.getReference("chats").child(chatRoomId).child("mensajes")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<MensajeChat>()
+                for (child in snapshot.children) {
+                    val id = child.key ?: ""
+                    val emisor = child.child("emisorTelefono").getValue(String::class.java) ?: ""
+                    val emisorNom = child.child("emisorNombre").getValue(String::class.java) ?: ""
+                    val txt = child.child("texto").getValue(String::class.java) ?: ""
+                    val fecha = child.child("fechaHora").getValue(String::class.java) ?: ""
+
+                    if (id.isNotBlank() && txt.isNotBlank()) {
+                        list.add(
+                            MensajeChat(
+                                id = id,
+                                emisorTelefono = emisor,
+                                emisorNombre = emisorNom,
+                                texto = txt,
+                                fechaHora = fecha
+                            )
+                        )
+                    }
+                }
+                mensajes.clear()
+                mensajes.addAll(list) // Orden cronológico
+                isLoadingMensajes = false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                isLoadingMensajes = false
+            }
+        }
+
+        ref.addValueEventListener(listener)
+
+        onDispose {
+            ref.removeEventListener(listener)
+        }
+    }
+
+    val listState = rememberLazyListState()
+
+    // Auto-desplazamiento al último mensaje cuando cambia la lista
+    LaunchedEffect(mensajes.size) {
+        if (mensajes.isNotEmpty()) {
+            listState.animateScrollToItem(mensajes.size - 1)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier
+            .fillMaxWidth(0.98f)
+            .fillMaxHeight(0.92f),
+        shape = RoundedCornerShape(24.dp),
+        containerColor = DarkBg,
+        title = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(AppBlue, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (contactoNombre.isNotBlank()) contactoNombre.take(1).uppercase() else "C",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = if (contactoNombre.isNotBlank()) contactoNombre else contactoTelefono,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "En línea",
+                            fontSize = 12.sp,
+                            color = AppLightBlue
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            enviarMensajeSMS(context, contactoTelefono, "")
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Phone,
+                            contentDescription = "SMS Externo",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar chat",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxSize()) {
+                HorizontalDivider(color = BorderDark)
+
+                // Área Principal del Chat
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    if (isLoadingMensajes) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = AppLightBlue)
+                        }
+                    } else if (mensajes.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Chat,
+                                contentDescription = null,
+                                tint = AppLightBlue,
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Comienza la conversación",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Envía un mensaje para chatear en tiempo real con ${if (contactoNombre.isNotBlank()) contactoNombre else contactoTelefono}.",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(mensajes, key = { it.id }) { msg ->
+                                val esMio = msg.emisorTelefono == cleanMyPhone
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = if (esMio) Arrangement.End else Arrangement.Start
+                                ) {
+                                    Surface(
+                                        color = if (esMio) Color(0xFF1E3A5F) else CardBg,
+                                        shape = RoundedCornerShape(
+                                            topStart = 16.dp,
+                                            topEnd = 16.dp,
+                                            bottomStart = if (esMio) 16.dp else 2.dp,
+                                            bottomEnd = if (esMio) 2.dp else 16.dp
+                                        ),
+                                        border = BorderStroke(1.dp, if (esMio) AppBlue.copy(alpha = 0.5f) else BorderDark),
+                                        modifier = Modifier.widthIn(max = 280.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text(
+                                                text = msg.texto,
+                                                fontSize = 14.sp,
+                                                color = TextPrimary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = msg.fechaHora,
+                                                fontSize = 10.sp,
+                                                color = TextSecondary,
+                                                modifier = Modifier.align(Alignment.End)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = BorderDark)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Barra Inferior para Escribir y Enviar Mensajes
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = textoMensaje,
+                        onValueChange = { textoMensaje = it },
+                        placeholder = { Text("Escribe un mensaje...", color = TextSecondary, fontSize = 13.sp) },
+                        maxLines = 3,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AppLightBlue,
+                            unfocusedBorderColor = BorderDark,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            val cleanTxt = textoMensaje.trim()
+                            if (cleanTxt.isNotBlank()) {
+                                enviarMensajeChat(
+                                    chatRoomId = chatRoomId,
+                                    emisorPhone = cleanMyPhone,
+                                    emisorNombre = miNombre,
+                                    texto = cleanTxt
+                                )
+                                textoMensaje = ""
+                            }
+                        },
+                        enabled = textoMensaje.isNotBlank(),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(
+                                if (textoMensaje.isNotBlank()) AppBlue else Color(0xFF162338),
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Send,
+                            contentDescription = "Enviar mensaje",
+                            tint = if (textoMensaje.isNotBlank()) Color.White else TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {}
+    )
+}
+
+private fun enviarMensajeChat(
+    chatRoomId: String,
+    emisorPhone: String,
+    emisorNombre: String,
+    texto: String
+) {
+    if (chatRoomId.isBlank() || emisorPhone.isBlank() || texto.isBlank()) return
+
+    val dateStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val messagesRef = rtdb.getReference("chats").child(chatRoomId).child("mensajes")
+    val msgId = messagesRef.push().key ?: System.currentTimeMillis().toString()
+
+    val msgMap = hashMapOf(
+        "id" to msgId,
+        "emisorTelefono" to emisorPhone,
+        "emisorNombre" to emisorNombre,
+        "texto" to texto,
+        "fechaHora" to dateStr
+    )
+
+    messagesRef.child(msgId).setValue(msgMap)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("chats")
+                    .document(chatRoomId)
+                    .collection("mensajes")
+                    .document(msgId)
+                    .set(msgMap)
+            } catch (_: Exception) {}
+        }
+}
+
+// Función auxiliar para enviar mensaje SMS externo
+private fun enviarMensajeSMS(context: Context, telefono: String, mensaje: String) {
+    val cleanTel = telefono.trim()
+    if (cleanTel.isBlank()) return
+
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+            data = android.net.Uri.parse("smsto:$cleanTel")
+            putExtra("sms_body", mensaje)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Log.e("SMS", "Error al abrir la aplicación de SMS", e)
+    }
 }
 
 @Composable
@@ -1865,7 +2299,7 @@ fun NotasContent(userPhone: String) {
 
     val cleanPhone = userPhone.trim()
 
-    // Escuchar notas en tiempo real desde Firebase Realtime Database
+    // Escuchar notas en tiempo real
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoading = false
@@ -1922,7 +2356,7 @@ fun NotasContent(userPhone: String) {
             onDismiss = { showAddDialog = false },
             onSave = { titulo, descripcion, categoria, colorHex ->
                 showAddDialog = false
-                guardarNotaEnFirebase(cleanPhone, titulo, descripcion, categoria, colorHex)
+                guardarNotaEnBD(cleanPhone, titulo, descripcion, categoria, colorHex)
             }
         )
     }
@@ -1945,7 +2379,7 @@ fun NotasContent(userPhone: String) {
                         val target = notaToDelete
                         notaToDelete = null
                         if (target != null) {
-                            eliminarNotaDeFirebase(cleanPhone, target.id)
+                            eliminarNotaDeBD(cleanPhone, target.id)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
@@ -2411,7 +2845,7 @@ fun VerDetalleNotaDialog(
                         }
 
                         isSavingChanges = true
-                        actualizarNotaEnFirebase(
+                        actualizarNotaEnBD(
                             phone = userPhone,
                             noteId = nota.id,
                             titulo = cleanTitle,
@@ -2706,8 +3140,8 @@ fun AgregarNotaDialog(
     )
 }
 
-// Funciones auxiliares para sincronizar notas con Firebase
-private fun guardarNotaEnFirebase(
+// Funciones auxiliares para sincronizar notas
+private fun guardarNotaEnBD(
     phone: String,
     titulo: String,
     descripcion: String,
@@ -2730,10 +3164,9 @@ private fun guardarNotaEnFirebase(
         "colorHex" to colorHex
     )
 
-    // Guardar en Realtime Database
+    // Guardar en la base de datos
     notesRef.child(noteId).setValue(noteMap)
         .addOnSuccessListener {
-            // Guardar también en Firestore como respaldo
             try {
                 FirebaseFirestore.getInstance()
                     .collection("usuarios")
@@ -2745,7 +3178,7 @@ private fun guardarNotaEnFirebase(
         }
 }
 
-private fun actualizarNotaEnFirebase(
+private fun actualizarNotaEnBD(
     phone: String,
     noteId: String,
     titulo: String,
@@ -2776,7 +3209,7 @@ private fun actualizarNotaEnFirebase(
         }
 }
 
-private fun eliminarNotaDeFirebase(phone: String, noteId: String) {
+private fun eliminarNotaDeBD(phone: String, noteId: String) {
     if (phone.isBlank() || noteId.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
@@ -2803,8 +3236,8 @@ private fun realizarYLlamadaYRegistrar(
     val cleanTel = telefonoDestino.trim()
     if (cleanTel.isBlank()) return
 
-    // Registrar llamada en Firebase
-    registrarLlamadaEnFirebase(userPhone, cleanTel, nombreContacto)
+    // Registrar llamada en la base de datos
+    registrarLlamadaEnBD(userPhone, cleanTel, nombreContacto)
 
     // Abrir marcador del celular
     try {
@@ -2818,7 +3251,7 @@ private fun realizarYLlamadaYRegistrar(
     }
 }
 
-private fun registrarLlamadaEnFirebase(
+private fun registrarLlamadaEnBD(
     userPhone: String,
     telefonoDestino: String,
     nombreContacto: String
@@ -2851,7 +3284,7 @@ private fun registrarLlamadaEnFirebase(
         }
 }
 
-private fun eliminarLlamadaDeFirebase(userPhone: String, callId: String) {
+private fun eliminarLlamadaDeBD(userPhone: String, callId: String) {
     if (userPhone.isBlank() || callId.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
@@ -2868,14 +3301,14 @@ private fun eliminarLlamadaDeFirebase(userPhone: String, callId: String) {
         }
 }
 
-private fun vaciarHistorialDeFirebase(userPhone: String) {
+private fun vaciarHistorialDeBD(userPhone: String) {
     if (userPhone.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
     rtdb.getReference("usuarios").child(userPhone).child("llamadas").removeValue()
 }
 
-// Funciones auxiliares de contactos para Firebase y agenda
+// Funciones auxiliares de contactos para la base de datos y agenda
 private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, telefono: String) {
     try {
         val intent = android.content.Intent(android.provider.ContactsContract.Intents.Insert.ACTION).apply {
@@ -2889,7 +3322,7 @@ private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, tele
     }
 }
 
-private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefono: String, detalle: String) {
+private fun guardarContactoEnBD(userPhone: String, nombre: String, telefono: String, detalle: String) {
     if (userPhone.isBlank()) return
 
     val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
@@ -2918,7 +3351,7 @@ private fun guardarContactoEnFirebase(userPhone: String, nombre: String, telefon
         }
 }
 
-private fun actualizarContactoEnFirebase(userPhone: String, contactId: String, nombre: String, telefono: String, detalle: String) {
+private fun actualizarContactoEnBD(userPhone: String, contactId: String, nombre: String, telefono: String, detalle: String) {
     if (userPhone.isBlank() || contactId.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
@@ -2941,7 +3374,7 @@ private fun actualizarContactoEnFirebase(userPhone: String, contactId: String, n
         }
 }
 
-private fun eliminarContactoDeFirebase(userPhone: String, contactId: String) {
+private fun eliminarContactoDeBD(userPhone: String, contactId: String) {
     if (userPhone.isBlank() || contactId.isBlank()) return
 
     val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
@@ -3002,7 +3435,7 @@ fun LlamadasContent(userPhone: String) {
         }
     }
 
-    // Cargar historial de llamadas en tiempo real desde Firebase
+    // Cargar historial de llamadas en tiempo real desde la base de datos
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoadingHistorial = false
@@ -3067,7 +3500,7 @@ fun LlamadasContent(userPhone: String) {
                 Button(
                     onClick = {
                         showClearHistoryDialog = false
-                        vaciarHistorialDeFirebase(cleanPhone)
+                        vaciarHistorialDeBD(cleanPhone)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
                 ) {
@@ -3478,7 +3911,7 @@ fun LlamadasContent(userPhone: String) {
 
                                         IconButton(
                                             onClick = {
-                                                eliminarLlamadaDeFirebase(cleanPhone, registro.id)
+                                                eliminarLlamadaDeBD(cleanPhone, registro.id)
                                             },
                                             modifier = Modifier.size(34.dp)
                                         ) {
