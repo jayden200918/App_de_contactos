@@ -47,15 +47,20 @@ import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PendingActions
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,10 +70,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
+import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
@@ -86,7 +96,6 @@ val TextPrimary = Color(0xFFF1F5F9)
 val TextSecondary = Color(0xFF94A3B8)
 val AppBlue = Color(0xFF2563EB)
 val AppLightBlue = Color(0xFF38BDF8)
-val WhatsAppGreen = AppLightBlue
 val ChipSelectedBg = Color(0xFF172E48)
 val BottomBarBg = Color(0xFF070E18)
 val BorderDark = Color(0xFF1E2D42)
@@ -95,7 +104,7 @@ val ErrorRed = Color(0xFFFF5252)
 data class CategoriaNota(
     val nombre: String,
     val color: Color,
-    val hex: String
+    val hex: String,
 )
 
 val categoriasDisponibles = listOf(
@@ -105,20 +114,9 @@ val categoriasDisponibles = listOf(
     CategoriaNota("Idea", Color(0xFF06B6D4), "#06B6D4")
 )
 
-val categoriasContactos = listOf("General", "Familia", "Trabajo", "Amigos", "Otros")
-val prioridadesNota = listOf("Baja", "Media", "Alta")
-val estadosNota = listOf("Pendiente", "En proceso", "Completada")
-
-fun getFechaSeguimientoRapida(diasDesdeHoy: Int): String {
-    val cal = java.util.Calendar.getInstance()
-    cal.add(java.util.Calendar.DAY_OF_YEAR, diasDesdeHoy)
-    val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-    return sdf.format(cal.time)
-}
-
 fun parseHexColor(hex: String, fallback: Color = AppLightBlue): Color {
     return try {
-        Color(android.graphics.Color.parseColor(hex))
+        Color(hex.toColorInt())
     } catch (_: Exception) {
         fallback
     }
@@ -135,7 +133,8 @@ data class Nota(
     val contactoNombre: String = "",
     val prioridad: String = "Media",
     val estado: String = "Pendiente",
-    val fechaSeguimiento: String = ""
+    val fechaSeguimiento: String = "",
+    val esImportante: Boolean = false
 )
 
 data class Contacto(
@@ -182,11 +181,11 @@ object SessionManager {
 
     fun saveSession(context: Context, phone: String, name: String) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean(KEY_IS_LOGGED_IN, true)
-            .putString(KEY_PHONE, phone)
-            .putString(KEY_NAME, name)
-            .apply()
+        prefs.edit {
+            putBoolean(KEY_IS_LOGGED_IN, true)
+            putString(KEY_PHONE, phone)
+            putString(KEY_NAME, name)
+        }
     }
 
     fun isLoggedIn(context: Context): Boolean {
@@ -206,7 +205,7 @@ object SessionManager {
 
     fun clearSession(context: Context) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 }
 
@@ -280,6 +279,11 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
     var isRegisterMode by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -353,7 +357,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
                     },
                     singleLine = true,
-                    isError = (errorMessage != null && username.isBlank()),
+                    isError = errorMessage != null && username.isBlank(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = AppLightBlue,
@@ -382,7 +386,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
                     },
                     singleLine = true,
-                    isError = (errorMessage != null && phone.isBlank()),
+                    isError = errorMessage != null && phone.isBlank(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = AppLightBlue,
@@ -393,6 +397,86 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Contraseña", color = TextSecondary) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Lock,
+                            contentDescription = "Contraseña",
+                            tint = AppLightBlue
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = TextSecondary
+                            )
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    isError = errorMessage != null && password.isBlank(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AppLightBlue,
+                        unfocusedBorderColor = BorderDark,
+                        errorBorderColor = ErrorRed,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (isRegisterMode) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = {
+                            confirmPassword = it
+                            if (errorMessage != null) errorMessage = null
+                        },
+                        label = { Text("Confirmar contraseña", color = TextSecondary) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Lock,
+                                contentDescription = "Confirmar contraseña",
+                                tint = AppLightBlue
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                                Icon(
+                                    imageVector = if (confirmPasswordVisible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                    contentDescription = if (confirmPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                    tint = TextSecondary
+                                )
+                            }
+                        },
+                        visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true,
+                        isError = errorMessage != null && (confirmPassword.isBlank() || confirmPassword != password),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AppLightBlue,
+                            unfocusedBorderColor = BorderDark,
+                            errorBorderColor = ErrorRed,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -424,10 +508,23 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                     onClick = {
                         val cleanUser = username.trim()
                         val cleanPhone = phone.trim()
+                        val cleanPassword = password.trim()
+                        val cleanConfirmPassword = confirmPassword.trim()
 
-                        if (cleanUser.isBlank() || cleanPhone.isBlank()) {
-                            errorMessage = "Por favor, debes rellenar todos los espacios."
+                        if (cleanUser.isBlank() || cleanPhone.isBlank() || cleanPassword.isBlank()) {
+                            errorMessage = "Por favor, debes rellenar todos los campos."
                             return@Button
+                        }
+
+                        if (isRegisterMode) {
+                            if (cleanConfirmPassword.isBlank()) {
+                                errorMessage = "Por favor, confirma tu contraseña."
+                                return@Button
+                            }
+                            if (cleanPassword != cleanConfirmPassword) {
+                                errorMessage = "Las contraseñas no coinciden."
+                                return@Button
+                            }
                         }
 
                         errorMessage = null
@@ -439,7 +536,8 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
 
                         val userMap = hashMapOf(
                             "nombre" to cleanUser,
-                            "telefono" to cleanPhone
+                            "telefono" to cleanPhone,
+                            "password" to cleanPassword
                         )
 
                         if (isRegisterMode) {
@@ -455,12 +553,20 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                 .addOnSuccessListener { snapshot ->
                                     if (snapshot.exists()) {
                                         val nombreGuardado = snapshot.child("nombre").getValue(String::class.java) ?: ""
-                                        if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
-                                            isLoading = false
-                                            onLoginSuccess(cleanPhone, cleanUser)
-                                        } else {
+                                        val passwordGuardada = snapshot.child("password").getValue(String::class.java) ?: ""
+
+                                        if (!nombreGuardado.equals(cleanUser, ignoreCase = true)) {
                                             isLoading = false
                                             errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                        } else if (passwordGuardada.isNotBlank() && passwordGuardada != cleanPassword) {
+                                            isLoading = false
+                                            errorMessage = "Contraseña incorrecta."
+                                        } else {
+                                            if (passwordGuardada.isBlank()) {
+                                                rtdb.getReference("usuarios").child(cleanPhone).child("password").setValue(cleanPassword)
+                                            }
+                                            isLoading = false
+                                            onLoginSuccess(cleanPhone, cleanUser)
                                         }
                                     } else {
                                         db.collection("usuarios").document(cleanPhone).get()
@@ -468,10 +574,14 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                                 isLoading = false
                                                 if (document.exists()) {
                                                     val nombreGuardado = document.getString("nombre") ?: ""
-                                                    if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
-                                                        onLoginSuccess(cleanPhone, cleanUser)
-                                                    } else {
+                                                    val passwordGuardada = document.getString("password") ?: ""
+
+                                                    if (!nombreGuardado.equals(cleanUser, ignoreCase = true)) {
                                                         errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                                    } else if (passwordGuardada.isNotBlank() && passwordGuardada != cleanPassword) {
+                                                        errorMessage = "Contraseña incorrecta."
+                                                    } else {
+                                                        onLoginSuccess(cleanPhone, cleanUser)
                                                     }
                                                 } else {
                                                     errorMessage = "Usuario no registrado. Por favor, haz clic en REGÍSTRATE."
@@ -489,10 +599,14 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                             isLoading = false
                                             if (document.exists()) {
                                                 val nombreGuardado = document.getString("nombre") ?: ""
-                                                if (nombreGuardado.equals(cleanUser, ignoreCase = true)) {
-                                                    onLoginSuccess(cleanPhone, cleanUser)
-                                                } else {
+                                                val passwordGuardada = document.getString("password") ?: ""
+
+                                                if (!nombreGuardado.equals(cleanUser, ignoreCase = true)) {
                                                     errorMessage = "El nombre de usuario no coincide con el número ingresado."
+                                                } else if (passwordGuardada.isNotBlank() && passwordGuardada != cleanPassword) {
+                                                    errorMessage = "Contraseña incorrecta."
+                                                } else {
+                                                    onLoginSuccess(cleanPhone, cleanUser)
                                                 }
                                             } else {
                                                 errorMessage = "Usuario no registrado. Por favor, haz clic en REGÍSTRATE."
@@ -539,6 +653,8 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                     modifier = Modifier
                         .clickable {
                             isRegisterMode = !isRegisterMode
+                            password = ""
+                            confirmPassword = ""
                             errorMessage = null
                             successMessage = null
                         }
@@ -576,7 +692,7 @@ fun MainScreen(onLogout: () -> Unit) {
             TopAppBar(
                 title = {
                     Text(
-                        text = "App contacto",
+                        text = "Mayback",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -903,10 +1019,13 @@ fun ContactosContent(userPhone: String) {
     val contactos = remember { mutableStateListOf<Contacto>() }
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
+    var sortAscending by remember { mutableStateOf(true) }
+    var showOnlyFavorites by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var contactoToEdit by remember { mutableStateOf<Contacto?>(null) }
     var contactoToDelete by remember { mutableStateOf<Contacto?>(null) }
     var selectedContactoForDetail by remember { mutableStateOf<Contacto?>(null) }
+    var contactoForOpcionesMensaje by remember { mutableStateOf<Contacto?>(null) }
     var contactoForChat by remember { mutableStateOf<Contacto?>(null) }
 
     val cleanPhone = userPhone.trim()
@@ -930,13 +1049,29 @@ fun ContactosContent(userPhone: String) {
                     val telefono = child.child("telefono").getValue(String::class.java) ?: ""
                     val detalle = child.child("detalle").getValue(String::class.java) ?: ""
                     val fechaAgregado = child.child("fechaAgregado").getValue(String::class.java) ?: ""
+                    val favRaw = child.child("esFavorito").value
+                    val esFavorito = when (favRaw) {
+                        is Boolean -> favRaw
+                        is String -> favRaw.toBoolean()
+                        is Number -> favRaw.toInt() != 0
+                        else -> false
+                    }
 
                     if (id.isNotBlank()) {
-                        list.add(Contacto(id = id, nombre = nombre, telefono = telefono, detalle = detalle, fechaAgregado = fechaAgregado))
+                        list.add(
+                            Contacto(
+                                id = id,
+                                nombre = nombre,
+                                telefono = telefono,
+                                detalle = detalle,
+                                fechaAgregado = fechaAgregado,
+                                esFavorito = esFavorito
+                            )
+                        )
                     }
                 }
                 contactos.clear()
-                contactos.addAll(list.sortedBy { it.nombre.lowercase() })
+                contactos.addAll(list)
                 isLoading = false
             }
 
@@ -952,11 +1087,27 @@ fun ContactosContent(userPhone: String) {
         }
     }
 
+    if (contactoForOpcionesMensaje != null) {
+        val target = contactoForOpcionesMensaje!!
+        OpcionesEnviarMensajeDialog(
+            contacto = target,
+            onDismiss = { contactoForOpcionesMensaje = null },
+            onEnviarPorApp = {
+                contactoForOpcionesMensaje = null
+                contactoForChat = target
+            },
+            onEnviarPorSms = {
+                contactoForOpcionesMensaje = null
+                enviarMensajeSMS(context, target.telefono)
+            }
+        )
+    }
+
     if (contactoForChat != null) {
         val myName = SessionManager.getUserName(context)
         PantallaChatDialog(
             miTelefono = cleanPhone,
-            miNombre = if (myName.isNotBlank()) myName else "Yo",
+            miNombre = myName.ifBlank { "Yo" },
             contactoNombre = contactoForChat!!.nombre,
             contactoTelefono = contactoForChat!!.telefono,
             onDismiss = { contactoForChat = null }
@@ -982,6 +1133,19 @@ fun ContactosContent(userPhone: String) {
         VerDetalleContactoDialog(
             contacto = selectedContactoForDetail!!,
             onDismiss = { selectedContactoForDetail = null },
+            onFavoriteToggle = {
+                val target = selectedContactoForDetail
+                if (target != null) {
+                    val newFav = !target.esFavorito
+                    val updated = target.copy(esFavorito = newFav)
+                    selectedContactoForDetail = updated
+                    val index = contactos.indexOfFirst { c -> c.id == target.id }
+                    if (index != -1) {
+                        contactos[index] = updated
+                    }
+                    setFavoritoEnBD(cleanPhone, target.id, newFav)
+                }
+            },
             onEdit = {
                 val target = selectedContactoForDetail
                 selectedContactoForDetail = null
@@ -1005,6 +1169,13 @@ fun ContactosContent(userPhone: String) {
                 selectedContactoForDetail = null
                 if (target != null) {
                     contactoForChat = target
+                }
+            },
+            onSms = {
+                val target = selectedContactoForDetail
+                selectedContactoForDetail = null
+                if (target != null) {
+                    enviarMensajeSMS(context, target.telefono)
                 }
             }
         )
@@ -1063,16 +1234,25 @@ fun ContactosContent(userPhone: String) {
         )
     }
 
-    val contactosFiltrados = remember(contactos, searchQuery) {
-        if (searchQuery.isBlank()) {
-            contactos
-        } else {
-            contactos.filter {
-                it.nombre.contains(searchQuery, ignoreCase = true) ||
-                it.telefono.contains(searchQuery, ignoreCase = true) ||
-                it.detalle.contains(searchQuery, ignoreCase = true)
+    val contactosFiltrados = remember(contactos.toList(), searchQuery, sortAscending, showOnlyFavorites) {
+        var sequence = contactos.asSequence()
+        if (searchQuery.isNotBlank()) {
+            val q = searchQuery.trim()
+            sequence = sequence.filter {
+                it.nombre.contains(q, ignoreCase = true) ||
+                it.telefono.contains(q, ignoreCase = true) ||
+                it.detalle.contains(q, ignoreCase = true)
             }
         }
+        if (showOnlyFavorites) {
+            sequence = sequence.filter { it.esFavorito }
+        }
+        val sorted = if (sortAscending) {
+            sequence.sortedBy { it.nombre.lowercase() }
+        } else {
+            sequence.sortedByDescending { it.nombre.lowercase() }
+        }
+        sorted.toList()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1101,6 +1281,77 @@ fun ContactosContent(userPhone: String) {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = true,
+                        onClick = { sortAscending = !sortAscending },
+                        label = {
+                            Text(
+                                text = if (sortAscending) "Orden: A - Z" else "Orden: Z - A",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Sort,
+                                contentDescription = null,
+                                tint = AppLightBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = ChipSelectedBg,
+                            labelColor = TextPrimary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = true,
+                            borderColor = BorderDark,
+                            selectedBorderColor = AppLightBlue
+                        )
+                    )
+
+                    FilterChip(
+                        selected = showOnlyFavorites,
+                        onClick = { showOnlyFavorites = !showOnlyFavorites },
+                        label = {
+                            Text(
+                                text = if (showOnlyFavorites) "Solo Favoritos" else "Todos",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (showOnlyFavorites) Color(0xFFFFD700) else TextSecondary
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (showOnlyFavorites) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = null,
+                                tint = if (showOnlyFavorites) Color(0xFFFFD700) else TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = if (showOnlyFavorites) Color(0xFF2A2815) else CardBg,
+                            selectedContainerColor = Color(0xFF2A2815),
+                            labelColor = TextPrimary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = showOnlyFavorites,
+                            borderColor = BorderDark,
+                            selectedBorderColor = Color(0xFFFFD700)
+                        )
+                    )
+                }
             }
 
             if (isLoading) {
@@ -1145,10 +1396,11 @@ fun ContactosContent(userPhone: String) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No se encontraron contactos para \"$searchQuery\"",
+                        text = if (showOnlyFavorites) "No tienes contactos guardados como favoritos" else "No se encontraron contactos para \"$searchQuery\"",
                         color = TextSecondary,
                         fontSize = 14.sp,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(16.dp)
                     )
                 }
             } else {
@@ -1163,13 +1415,21 @@ fun ContactosContent(userPhone: String) {
                         ContactoItemCard(
                             contacto = contacto,
                             onCardClick = { selectedContactoForDetail = contacto },
+                            onFavoriteClick = {
+                                val newFav = !contacto.esFavorito
+                                val index = contactos.indexOfFirst { c -> c.id == contacto.id }
+                                if (index != -1) {
+                                    contactos[index] = contactos[index].copy(esFavorito = newFav)
+                                }
+                                setFavoritoEnBD(cleanPhone, contacto.id, newFav)
+                            },
                             onEditClick = { contactoToEdit = contacto },
                             onDeleteClick = { contactoToDelete = contacto },
                             onCallClick = {
                                 realizarYLlamadaYRegistrar(context, cleanPhone, contacto.telefono, contacto.nombre)
                             },
                             onChatClick = {
-                                contactoForChat = contacto
+                                contactoForOpcionesMensaje = contacto
                             }
                         )
                     }
@@ -1199,6 +1459,7 @@ fun ContactosContent(userPhone: String) {
 fun ContactoItemCard(
     contacto: Contacto,
     onCardClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onCallClick: () -> Unit,
@@ -1242,14 +1503,26 @@ fun ContactoItemCard(
                 Spacer(modifier = Modifier.width(14.dp))
 
                 Column {
-                    Text(
-                        text = contacto.nombre,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = contacto.nombre,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (contacto.esFavorito) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = "Favorito",
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -1289,6 +1562,18 @@ fun ContactoItemCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onFavoriteClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (contacto.esFavorito) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = "Favorito",
+                        tint = if (contacto.esFavorito) Color(0xFFFFD700) else TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 IconButton(
                     onClick = onCallClick,
                     modifier = Modifier.size(32.dp)
@@ -1345,10 +1630,12 @@ fun ContactoItemCard(
 fun VerDetalleContactoDialog(
     contacto: Contacto,
     onDismiss: () -> Unit,
+    onFavoriteToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onCall: () -> Unit,
-    onChat: () -> Unit
+    onChat: () -> Unit,
+    onSms: () -> Unit = {}
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1383,16 +1670,30 @@ fun VerDetalleContactoDialog(
                     )
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onFavoriteToggle,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (contacto.esFavorito) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                            contentDescription = "Favorito",
+                            tint = if (contacto.esFavorito) Color(0xFFFFD700) else TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         },
@@ -1464,39 +1765,59 @@ fun VerDetalleContactoDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     OutlinedButton(
                         onClick = onChat,
                         border = BorderStroke(1.dp, AppLightBlue),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = AppLightBlue),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Outlined.Chat,
                             contentDescription = null,
                             tint = AppLightBlue,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Chat App", fontSize = 13.sp)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Nuestra App", fontSize = 12.sp, maxLines = 1)
+                    }
+
+                    OutlinedButton(
+                        onClick = onSms,
+                        border = BorderStroke(1.dp, Color(0xFF22C55E)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF22C55E)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Sms,
+                            contentDescription = null,
+                            tint = Color(0xFF22C55E),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("SMS", fontSize = 12.sp, maxLines = 1)
                     }
 
                     Button(
                         onClick = onCall,
                         colors = ButtonDefaults.buttonColors(containerColor = AppBlue),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Phone,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Llamar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Llamar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                     }
                 }
 
@@ -1543,15 +1864,152 @@ fun VerDetalleContactoDialog(
 }
 
 @Composable
+fun OpcionesEnviarMensajeDialog(
+    contacto: Contacto,
+    onDismiss: () -> Unit,
+    onEnviarPorApp: () -> Unit,
+    onEnviarPorSms: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = CardBg,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "¿Enviar mensaje por?",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Selecciona cómo deseas comunicarte con ${if (contacto.nombre.isNotBlank()) contacto.nombre else contacto.telefono}:",
+                    fontSize = 14.sp,
+                    color = TextSecondary
+                )
+
+                Surface(
+                    onClick = onEnviarPorApp,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF162338),
+                    border = BorderStroke(1.dp, AppBlue.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(AppBlue, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Chat,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Nuestra App (Chat Mayback)",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Chat en tiempo real dentro de la aplicación",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    onClick = onEnviarPorSms,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF162338),
+                    border = BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color(0xFF22C55E), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Sms,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "SMS (Mensaje de texto)",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Enviar un SMS mediante la red de tu celular",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {}
+    )
+}
+
+@Composable
 fun PantallaChatDialog(
     miTelefono: String,
     miNombre: String,
     contactoNombre: String,
     contactoTelefono: String,
+    initialSendViaSms: Boolean = false,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     var textoMensaje by remember { mutableStateOf("") }
+    var sendViaSms by remember { mutableStateOf(initialSendViaSms) }
     val mensajes = remember { mutableStateListOf<MensajeChat>() }
     var isLoadingMensajes by remember { mutableStateOf(true) }
 
@@ -1560,9 +2018,9 @@ fun PantallaChatDialog(
 
     val chatRoomId = remember(cleanMyPhone, cleanContactPhone) {
         if (cleanMyPhone < cleanContactPhone) {
-            "${cleanMyPhone}_${cleanContactPhone}"
+            "${cleanMyPhone}_$cleanContactPhone"
         } else {
-            "${cleanContactPhone}_${cleanMyPhone}"
+            "${cleanContactPhone}_$cleanMyPhone"
         }
     }
 
@@ -1654,7 +2112,7 @@ fun PantallaChatDialog(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = if (contactoNombre.isNotBlank()) contactoNombre else contactoTelefono,
+                            text = contactoNombre.ifBlank { contactoTelefono },
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
@@ -1790,7 +2248,72 @@ fun PantallaChatDialog(
                 }
 
                 HorizontalDivider(color = BorderDark)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Enviar por:",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    FilterChip(
+                        selected = !sendViaSms,
+                        onClick = { sendViaSms = false },
+                        label = { Text("Nuestra App", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Chat,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AppBlue,
+                            selectedLabelColor = Color.White,
+                            containerColor = CardBg,
+                            labelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = !sendViaSms,
+                            borderColor = BorderDark,
+                            selectedBorderColor = AppLightBlue
+                        )
+                    )
+
+                    FilterChip(
+                        selected = sendViaSms,
+                        onClick = { sendViaSms = true },
+                        label = { Text("SMS", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Sms,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF22C55E),
+                            selectedLabelColor = Color.White,
+                            containerColor = CardBg,
+                            labelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = sendViaSms,
+                            borderColor = BorderDark,
+                            selectedBorderColor = Color(0xFF22C55E)
+                        )
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1799,10 +2322,16 @@ fun PantallaChatDialog(
                     OutlinedTextField(
                         value = textoMensaje,
                         onValueChange = { textoMensaje = it },
-                        placeholder = { Text("Escribe un mensaje...", color = TextSecondary, fontSize = 13.sp) },
+                        placeholder = {
+                            Text(
+                                text = if (sendViaSms) "Escribe mensaje por SMS..." else "Escribe mensaje por nuestra App...",
+                                color = TextSecondary,
+                                fontSize = 13.sp
+                            )
+                        },
                         maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AppLightBlue,
+                            focusedBorderColor = if (sendViaSms) Color(0xFF22C55E) else AppLightBlue,
                             unfocusedBorderColor = BorderDark,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
@@ -1817,12 +2346,16 @@ fun PantallaChatDialog(
                         onClick = {
                             val cleanTxt = textoMensaje.trim()
                             if (cleanTxt.isNotBlank()) {
-                                enviarMensajeChat(
-                                    chatRoomId = chatRoomId,
-                                    emisorPhone = cleanMyPhone,
-                                    emisorNombre = miNombre,
-                                    texto = cleanTxt
-                                )
+                                if (sendViaSms) {
+                                    enviarMensajeSMS(context, contactoTelefono, cleanTxt)
+                                } else {
+                                    enviarMensajeChat(
+                                        chatRoomId = chatRoomId,
+                                        emisorPhone = cleanMyPhone,
+                                        emisorNombre = miNombre,
+                                        texto = cleanTxt
+                                    )
+                                }
                                 textoMensaje = ""
                             }
                         },
@@ -1830,13 +2363,15 @@ fun PantallaChatDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .background(
-                                if (textoMensaje.isNotBlank()) AppBlue else Color(0xFF162338),
+                                if (textoMensaje.isNotBlank()) {
+                                    if (sendViaSms) Color(0xFF22C55E) else AppBlue
+                                } else Color(0xFF162338),
                                 CircleShape
                             )
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.Send,
-                            contentDescription = "Enviar mensaje",
+                            imageVector = if (sendViaSms) Icons.Outlined.Sms else Icons.AutoMirrored.Outlined.Send,
+                            contentDescription = if (sendViaSms) "Enviar SMS" else "Enviar por App",
                             tint = if (textoMensaje.isNotBlank()) Color.White else TextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1882,13 +2417,13 @@ private fun enviarMensajeChat(
         }
 }
 
-private fun enviarMensajeSMS(context: Context, telefono: String, mensaje: String) {
+private fun enviarMensajeSMS(context: Context, telefono: String, mensaje: String = "") {
     val cleanTel = telefono.trim()
     if (cleanTel.isBlank()) return
 
     try {
         val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
-            data = android.net.Uri.parse("smsto:$cleanTel")
+            data = "smsto:$cleanTel".toUri()
             putExtra("sms_body", mensaje)
         }
         context.startActivity(intent)
@@ -2302,6 +2837,13 @@ fun NotasContent(userPhone: String) {
                     val fecha = child.child("fecha").getValue(String::class.java) ?: ""
                     val categoria = child.child("categoria").getValue(String::class.java) ?: "Personal"
                     val colorHex = child.child("colorHex").getValue(String::class.java) ?: "#38BDF8"
+                    val impRaw = child.child("esImportante").value
+                    val esImportante = when (impRaw) {
+                        is Boolean -> impRaw
+                        is String -> impRaw.toBoolean()
+                        is Number -> impRaw.toInt() != 0
+                        else -> false
+                    }
 
                     if (id.isNotBlank()) {
                         list.add(
@@ -2311,7 +2853,8 @@ fun NotasContent(userPhone: String) {
                                 descripcion = descripcion,
                                 fecha = fecha,
                                 categoria = categoria,
-                                colorHex = colorHex
+                                colorHex = colorHex,
+                                esImportante = esImportante
                             )
                         )
                     }
@@ -2336,9 +2879,9 @@ fun NotasContent(userPhone: String) {
     if (showAddDialog) {
         AgregarNotaDialog(
             onDismiss = { showAddDialog = false },
-            onSave = { titulo, descripcion, categoria, colorHex ->
+            onSave = { titulo, descripcion, categoria, colorHex, esImportante ->
                 showAddDialog = false
-                guardarNotaEnBD(cleanPhone, titulo, descripcion, categoria, colorHex)
+                guardarNotaEnBD(cleanPhone, titulo, descripcion, categoria, colorHex, esImportante)
             }
         )
     }
@@ -2384,6 +2927,19 @@ fun NotasContent(userPhone: String) {
             nota = selectedNotaForDetail!!,
             userPhone = cleanPhone,
             onDismiss = { selectedNotaForDetail = null },
+            onToggleImportante = {
+                val target = selectedNotaForDetail
+                if (target != null) {
+                    val newImp = !target.esImportante
+                    val updated = target.copy(esImportante = newImp)
+                    selectedNotaForDetail = updated
+                    val index = notas.indexOfFirst { n -> n.id == target.id }
+                    if (index != -1) {
+                        notas[index] = updated
+                    }
+                    setNotaImportanteEnBD(cleanPhone, target.id, newImp)
+                }
+            },
             onDelete = {
                 val target = selectedNotaForDetail
                 selectedNotaForDetail = null
@@ -2392,6 +2948,10 @@ fun NotasContent(userPhone: String) {
                 }
             }
         )
+    }
+
+    val notasOrdenadas = remember(notas.toList()) {
+        notas.sortedWith(compareByDescending { it.esImportante })
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -2439,10 +2999,18 @@ fun NotasContent(userPhone: String) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                items(notas, key = { it.id }) { nota ->
+                items(notasOrdenadas, key = { it.id }) { nota ->
                     NotaItemCard(
                         nota = nota,
                         onCardClick = { selectedNotaForDetail = nota },
+                        onToggleImportante = {
+                            val newImp = !nota.esImportante
+                            val index = notas.indexOfFirst { n -> n.id == nota.id }
+                            if (index != -1) {
+                                notas[index] = notas[index].copy(esImportante = newImp)
+                            }
+                            setNotaImportanteEnBD(cleanPhone, nota.id, newImp)
+                        },
                         onDeleteClick = { notaToDelete = nota }
                     )
                 }
@@ -2471,6 +3039,7 @@ fun NotasContent(userPhone: String) {
 fun NotaItemCard(
     nota: Nota,
     onCardClick: () -> Unit,
+    onToggleImportante: () -> Unit = {},
     onDeleteClick: () -> Unit
 ) {
     val tagColor = parseHexColor(nota.colorHex)
@@ -2517,6 +3086,18 @@ fun NotaItemCard(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onToggleImportante,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.PushPin,
+                                contentDescription = "Fijar nota",
+                                tint = if (nota.esImportante) AppLightBlue else TextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = { onCardClick() },
                             modifier = Modifier.size(28.dp)
@@ -2585,6 +3166,7 @@ fun VerDetalleNotaDialog(
     nota: Nota,
     userPhone: String,
     onDismiss: () -> Unit,
+    onToggleImportante: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     var isEditMode by remember { mutableStateOf(false) }
@@ -2631,16 +3213,30 @@ fun VerDetalleNotaDialog(
                     }
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onToggleImportante,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.PushPin,
+                            contentDescription = "Fijar nota",
+                            tint = if (nota.esImportante) AppLightBlue else TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         },
@@ -2879,10 +3475,11 @@ fun VerDetalleNotaDialog(
 @Composable
 fun AgregarNotaDialog(
     onDismiss: () -> Unit,
-    onSave: (titulo: String, descripcion: String, categoria: String, colorHex: String) -> Unit
+    onSave: (titulo: String, descripcion: String, categoria: String, colorHex: String, esImportante: Boolean) -> Unit
 ) {
     var titulo by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
+    var esImportante by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf(categoriasDisponibles.first()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -3089,7 +3686,7 @@ fun AgregarNotaDialog(
                         return@Button
                     }
 
-                    onSave(cleanTitle, cleanDesc, selectedCategory.nombre, selectedCategory.hex)
+                    onSave(cleanTitle, cleanDesc, selectedCategory.nombre, selectedCategory.hex, esImportante)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = selectedCategory.color),
                 shape = RoundedCornerShape(10.dp)
@@ -3114,7 +3711,8 @@ private fun guardarNotaEnBD(
     titulo: String,
     descripcion: String,
     categoria: String,
-    colorHex: String
+    colorHex: String,
+    esImportante: Boolean = false
 ) {
     if (phone.isBlank()) return
 
@@ -3129,7 +3727,8 @@ private fun guardarNotaEnBD(
         "descripcion" to descripcion,
         "fecha" to dateStr,
         "categoria" to categoria,
-        "colorHex" to colorHex
+        "colorHex" to colorHex,
+        "esImportante" to esImportante
     )
 
     notesRef.child(noteId).setValue(noteMap)
@@ -3143,6 +3742,21 @@ private fun guardarNotaEnBD(
                     .set(noteMap)
             } catch (_: Exception) {}
         }
+}
+
+private fun setNotaImportanteEnBD(phone: String, noteId: String, esImportante: Boolean) {
+    if (phone.isBlank() || noteId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    rtdb.getReference("usuarios").child(phone).child("notas").child(noteId).child("esImportante").setValue(esImportante)
+    try {
+        FirebaseFirestore.getInstance()
+            .collection("usuarios")
+            .document(phone)
+            .collection("notas")
+            .document(noteId)
+            .update("esImportante", esImportante)
+    } catch (_: Exception) {}
 }
 
 private fun actualizarNotaEnBD(
@@ -3298,7 +3912,8 @@ private fun guardarContactoEnBD(userPhone: String, nombre: String, telefono: Str
         "nombre" to nombre,
         "telefono" to telefono,
         "detalle" to detalle,
-        "fechaAgregado" to dateStr
+        "fechaAgregado" to dateStr,
+        "esFavorito" to false
     )
 
     contactsRef.child(contactId).setValue(contactMap)
@@ -3350,6 +3965,27 @@ private fun eliminarContactoDeBD(userPhone: String, contactId: String) {
                     .collection("contactos")
                     .document(contactId)
                     .delete()
+            } catch (_: Exception) {}
+        }
+}
+
+private fun setFavoritoEnBD(userPhone: String, contactId: String, esFavorito: Boolean) {
+    if (userPhone.isBlank() || contactId.isBlank()) return
+
+    val rtdb = FirebaseDatabase.getInstance("https://app-de-contacto-default-rtdb.firebaseio.com")
+    val updates = hashMapOf<String, Any>(
+        "esFavorito" to esFavorito
+    )
+
+    rtdb.getReference("usuarios").child(userPhone).child("contactos").child(contactId).updateChildren(updates)
+        .addOnSuccessListener {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("usuarios")
+                    .document(userPhone)
+                    .collection("contactos")
+                    .document(contactId)
+                    .update(updates)
             } catch (_: Exception) {}
         }
 }

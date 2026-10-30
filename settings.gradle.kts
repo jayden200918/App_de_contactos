@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "App_de_contactos"
+rootProject.name = "Mayback"
 include(":app")
