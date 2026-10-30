@@ -31,7 +31,10 @@ import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
@@ -39,12 +42,19 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Dialpad
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PendingActions
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -95,6 +105,17 @@ val categoriasDisponibles = listOf(
     CategoriaNota("Idea", Color(0xFF06B6D4), "#06B6D4")
 )
 
+val categoriasContactos = listOf("General", "Familia", "Trabajo", "Amigos", "Otros")
+val prioridadesNota = listOf("Baja", "Media", "Alta")
+val estadosNota = listOf("Pendiente", "En proceso", "Completada")
+
+fun getFechaSeguimientoRapida(diasDesdeHoy: Int): String {
+    val cal = java.util.Calendar.getInstance()
+    cal.add(java.util.Calendar.DAY_OF_YEAR, diasDesdeHoy)
+    val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+    return sdf.format(cal.time)
+}
+
 fun parseHexColor(hex: String, fallback: Color = AppLightBlue): Color {
     return try {
         Color(android.graphics.Color.parseColor(hex))
@@ -109,7 +130,12 @@ data class Nota(
     val descripcion: String = "",
     val fecha: String = "",
     val categoria: String = "Personal",
-    val colorHex: String = "#38BDF8"
+    val colorHex: String = "#38BDF8",
+    val contactoId: String = "",
+    val contactoNombre: String = "",
+    val prioridad: String = "Media",
+    val estado: String = "Pendiente",
+    val fechaSeguimiento: String = ""
 )
 
 data class Contacto(
@@ -117,7 +143,10 @@ data class Contacto(
     val nombre: String = "",
     val telefono: String = "",
     val detalle: String = "",
-    val fechaAgregado: String = ""
+    val fechaAgregado: String = "",
+    val categoria: String = "General",
+    val esFavorito: Boolean = false,
+    val fechaSeguimiento: String = ""
 )
 
 data class MensajeChat(
@@ -192,7 +221,7 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             var isLoggedIn by remember { mutableStateOf(SessionManager.isLoggedIn(context)) }
 
-            ContactosAppTheme {
+            MaybackTheme {
                 Crossfade(
                     targetState = isLoggedIn,
                     animationSpec = tween(durationMillis = 350),
@@ -232,7 +261,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ContactosAppTheme(content: @Composable () -> Unit) {
+fun MaybackTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = DarkBg,
@@ -270,7 +299,7 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "App contacto",
+                    text = "Mayback",
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
