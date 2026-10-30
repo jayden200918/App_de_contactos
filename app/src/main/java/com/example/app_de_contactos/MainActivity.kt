@@ -9,8 +9,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,6 +50,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -67,20 +70,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Colores del tema oscuro azul de la app
-val DarkBg = Color(0xFF09111E)          // Fondo azul marino profundo
-val CardBg = Color(0xFF101B2B)          // Tarjetas azul marino
-val TextPrimary = Color(0xFFF1F5F9)     // Texto blanco hielo brillante
-val TextSecondary = Color(0xFF94A3B8)   // Texto secundario gris azulado
-val AppBlue = Color(0xFF2563EB)         // Azul cobalto para acciones
-val AppLightBlue = Color(0xFF38BDF8)    // Azul claro brillante para destacados e iconos
-val WhatsAppGreen = AppLightBlue        // Alias de compatibilidad
-val ChipSelectedBg = Color(0xFF172E48)  // Fondo azul oscuro para tabs seleccionados
-val BottomBarBg = Color(0xFF070E18)     // Barra inferior azul marino profundo
-val BorderDark = Color(0xFF1E2D42)      // Bordes azul oscuro suave
-val ErrorRed = Color(0xFFFF5252)        // Rojo para acciones peligrosas/eliminar
+val DarkBg = Color(0xFF09111E)
+val CardBg = Color(0xFF101B2B)
+val TextPrimary = Color(0xFFF1F5F9)
+val TextSecondary = Color(0xFF94A3B8)
+val AppBlue = Color(0xFF2563EB)
+val AppLightBlue = Color(0xFF38BDF8)
+val WhatsAppGreen = AppLightBlue
+val ChipSelectedBg = Color(0xFF172E48)
+val BottomBarBg = Color(0xFF070E18)
+val BorderDark = Color(0xFF1E2D42)
+val ErrorRed = Color(0xFFFF5252)
 
-// Categorías de notas disponibles (gama de colores azulados e índigo)
 data class CategoriaNota(
     val nombre: String,
     val color: Color,
@@ -88,10 +89,10 @@ data class CategoriaNota(
 )
 
 val categoriasDisponibles = listOf(
-    CategoriaNota("Personal", Color(0xFF38BDF8), "#38BDF8"),   // Azul Ciel
-    CategoriaNota("Trabajo", Color(0xFF2563EB), "#2563EB"),    // Azul Cobalto
-    CategoriaNota("Importante", Color(0xFF818CF8), "#818CF8"), // Azul Índigo
-    CategoriaNota("Idea", Color(0xFF06B6D4), "#06B6D4")        // Cían
+    CategoriaNota("Personal", Color(0xFF38BDF8), "#38BDF8"),
+    CategoriaNota("Trabajo", Color(0xFF2563EB), "#2563EB"),
+    CategoriaNota("Importante", Color(0xFF818CF8), "#818CF8"),
+    CategoriaNota("Idea", Color(0xFF06B6D4), "#06B6D4")
 )
 
 fun parseHexColor(hex: String, fallback: Color = AppLightBlue): Color {
@@ -102,7 +103,6 @@ fun parseHexColor(hex: String, fallback: Color = AppLightBlue): Color {
     }
 }
 
-// Modelo de datos para las notas
 data class Nota(
     val id: String = "",
     val titulo: String = "",
@@ -112,7 +112,6 @@ data class Nota(
     val colorHex: String = "#38BDF8"
 )
 
-// Modelo de datos para los contactos (con campo de detalle/nota)
 data class Contacto(
     val id: String = "",
     val nombre: String = "",
@@ -121,7 +120,6 @@ data class Contacto(
     val fechaAgregado: String = ""
 )
 
-// Modelo de datos para mensajes de Chat en tiempo real
 data class MensajeChat(
     val id: String = "",
     val emisorTelefono: String = "",
@@ -130,7 +128,6 @@ data class MensajeChat(
     val fechaHora: String = ""
 )
 
-// Modelo de datos para el registro del historial de llamadas
 data class LlamadaRegistro(
     val id: String = "",
     val nombreContacto: String = "Desconocido",
@@ -139,7 +136,6 @@ data class LlamadaRegistro(
     val tipo: String = "saliente"
 )
 
-// Informes para el teclado de marcado numérico
 data class DialButtonInfo(val number: String, val letters: String = "")
 
 val dialPadMatrix = listOf(
@@ -149,7 +145,6 @@ val dialPadMatrix = listOf(
     listOf(DialButtonInfo("*", ""), DialButtonInfo("0", "+"), DialButtonInfo("#", ""))
 )
 
-// Gestor de sesión persistente usando SharedPreferences
 object SessionManager {
     private const val PREF_NAME = "user_session"
     private const val KEY_IS_LOGGED_IN = "is_logged_in"
@@ -191,7 +186,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Pruebas de conexión
         probarConexiones()
 
         setContent {
@@ -230,7 +224,7 @@ class MainActivity : ComponentActivity() {
     private fun probarConexiones() {
         try {
             val app = FirebaseApp.getInstance()
-            Log.d("AppCheck", "¡Servicio conectado correctamente!: ${app.name}")
+            Log.d("AppCheck", "Servicio conectado: ${app.name}")
         } catch (e: Exception) {
             Log.e("AppCheck", "Error de conexión", e)
         }
@@ -254,7 +248,7 @@ fun ContactosAppTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
-    var isRegisterMode by remember { mutableStateOf(false) } // false: Iniciar Sesión, true: Registrarse
+    var isRegisterMode by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
 
@@ -267,7 +261,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
             .fillMaxSize()
             .background(DarkBg)
     ) {
-        // Franja superior azul oscuro
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -291,7 +284,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
             }
         }
 
-        // Tarjeta flotante central
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -317,7 +309,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Campo 1: Nombre de usuario
                 OutlinedTextField(
                     value = username,
                     onValueChange = {
@@ -347,11 +338,10 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Campo 2: Número de teléfono
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = {
-                        phone = it
+                    onValueChange = { input ->
+                        phone = input.filter { char -> char.isDigit() || char == '+' }
                         if (errorMessage != null) errorMessage = null
                     },
                     label = { Text("Número de teléfono", color = TextSecondary) },
@@ -375,7 +365,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Mensajes de respuesta (Error o Éxito)
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -402,7 +391,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Botón Principal (Iniciar Sesión o Registrarse)
                 Button(
                     onClick = {
                         val cleanUser = username.trim()
@@ -426,7 +414,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                         )
 
                         if (isRegisterMode) {
-                            // MODO REGISTRO: Guardar en Base de Datos e ingresar de inmediato
                             rtdb.getReference("usuarios").child(cleanPhone).setValue(userMap)
                             try {
                                 db.collection("usuarios").document(cleanPhone).set(userMap)
@@ -435,7 +422,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                             isLoading = false
                             onLoginSuccess(cleanPhone, cleanUser)
                         } else {
-                            // MODO INICIO DE SESIÓN: Buscar primero en la Base de Datos
                             rtdb.getReference("usuarios").child(cleanPhone).get()
                                 .addOnSuccessListener { snapshot ->
                                     if (snapshot.exists()) {
@@ -448,7 +434,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                             errorMessage = "El nombre de usuario no coincide con el número ingresado."
                                         }
                                     } else {
-                                        // Buscar respaldo
                                         db.collection("usuarios").document(cleanPhone).get()
                                             .addOnSuccessListener { document ->
                                                 isLoading = false
@@ -470,7 +455,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
                                     }
                                 }
                                 .addOnFailureListener {
-                                    // Intento secundario
                                     db.collection("usuarios").document(cleanPhone).get()
                                         .addOnSuccessListener { document ->
                                             isLoading = false
@@ -517,7 +501,6 @@ fun LoginScreen(onLoginSuccess: (phone: String, name: String) -> Unit) {
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Cambiar entre Iniciar Sesión y Registrarse
                 Text(
                     text = if (isRegisterMode) "¿YA TIENES CUENTA?\nINICIA SESIÓN" else "¿NO TIENES CUENTA?\nREGÍSTRATE",
                     color = AppLightBlue,
@@ -544,11 +527,10 @@ fun MainScreen(onLogout: () -> Unit) {
     val userName = remember { SessionManager.getUserName(context) }
     val userPhone = remember { SessionManager.getUserPhone(context) }
 
-    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Contactos, 1: Notas, 2: Llamadas
+    var selectedBottomTab by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Diálogo profesional de confirmación de cierre de sesión
     if (showLogoutDialog) {
         LogoutConfirmationDialog(
             userName = userName,
@@ -576,7 +558,7 @@ fun MainScreen(onLogout: () -> Unit) {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.AccountCircle,
-                                contentDescription = "Perfil de usuario",
+                                contentDescription = "Perfil",
                                 tint = AppLightBlue,
                                 modifier = Modifier.size(32.dp)
                             )
@@ -663,7 +645,6 @@ fun MainScreen(onLogout: () -> Unit) {
                 containerColor = BottomBarBg,
                 tonalElevation = 8.dp
             ) {
-                // Tab 1: Contactos
                 NavigationBarItem(
                     selected = selectedBottomTab == 0,
                     onClick = { selectedBottomTab = 0 },
@@ -688,7 +669,6 @@ fun MainScreen(onLogout: () -> Unit) {
                     )
                 )
 
-                // Tab 2: Notas
                 NavigationBarItem(
                     selected = selectedBottomTab == 1,
                     onClick = { selectedBottomTab = 1 },
@@ -713,7 +693,6 @@ fun MainScreen(onLogout: () -> Unit) {
                     )
                 )
 
-                // Tab 3: Llamadas
                 NavigationBarItem(
                     selected = selectedBottomTab == 2,
                     onClick = { selectedBottomTab = 2 },
@@ -845,7 +824,7 @@ fun LogoutConfirmationDialog(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "¿Estás seguro de que deseas salir de tu cuenta? Tendrás que volver a iniciar sesión para acceder a tus conversaciones.",
+                    text = "¿Estás seguro de que deseas salir de tu cuenta?",
                     fontSize = 13.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center
@@ -904,7 +883,6 @@ fun ContactosContent(userPhone: String) {
     val cleanPhone = userPhone.trim()
     val context = LocalContext.current
 
-    // Cargar contactos desde la base de datos
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoading = false
@@ -929,7 +907,7 @@ fun ContactosContent(userPhone: String) {
                     }
                 }
                 contactos.clear()
-                contactos.addAll(list.sortedBy { it.nombre.lowercase() }) // Ordenar alfabéticamente
+                contactos.addAll(list.sortedBy { it.nombre.lowercase() })
                 isLoading = false
             }
 
@@ -945,7 +923,6 @@ fun ContactosContent(userPhone: String) {
         }
     }
 
-    // Pantalla / Diálogo de Chat en Tiempo Real con Jetpack Compose
     if (contactoForChat != null) {
         val myName = SessionManager.getUserName(context)
         PantallaChatDialog(
@@ -957,7 +934,6 @@ fun ContactosContent(userPhone: String) {
         )
     }
 
-    // Diálogo para agregar nuevo contacto
     if (showAddDialog) {
         AgregarContactoDialog(
             onDismiss = { showAddDialog = false },
@@ -973,7 +949,6 @@ fun ContactosContent(userPhone: String) {
         )
     }
 
-    // Diálogo para consultar detalle del contacto
     if (selectedContactoForDetail != null) {
         VerDetalleContactoDialog(
             contacto = selectedContactoForDetail!!,
@@ -1006,7 +981,6 @@ fun ContactosContent(userPhone: String) {
         )
     }
 
-    // Diálogo para editar contacto
     if (contactoToEdit != null) {
         EditarContactoDialog(
             contacto = contactoToEdit!!,
@@ -1021,7 +995,6 @@ fun ContactosContent(userPhone: String) {
         )
     }
 
-    // Diálogo para confirmar eliminación de contacto
     if (contactoToDelete != null) {
         AlertDialog(
             onDismissRequest = { contactoToDelete = null },
@@ -1075,7 +1048,6 @@ fun ContactosContent(userPhone: String) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Campo de Búsqueda
             if (contactos.isNotEmpty()) {
                 OutlinedTextField(
                     value = searchQuery,
@@ -1176,7 +1148,6 @@ fun ContactosContent(userPhone: String) {
             }
         }
 
-        // Botón Flotante (FAB) para Agregar Nuevo Contacto
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = AppBlue,
@@ -1224,7 +1195,6 @@ fun ContactoItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Avatar circular con inicial
                 Box(
                     modifier = Modifier
                         .size(46.dp)
@@ -1267,7 +1237,6 @@ fun ContactoItemCard(
                         )
                     }
 
-                    // Muestra el detalle del contacto si existe
                     if (contacto.detalle.isNotBlank()) {
                         Spacer(modifier = Modifier.height(3.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1291,7 +1260,6 @@ fun ContactoItemCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Botón para llamar
                 IconButton(
                     onClick = onCallClick,
                     modifier = Modifier.size(32.dp)
@@ -1304,7 +1272,6 @@ fun ContactoItemCard(
                     )
                 }
 
-                // Botón para abir Chat interactivo en tiempo real
                 IconButton(
                     onClick = onChatClick,
                     modifier = Modifier.size(32.dp)
@@ -1317,7 +1284,6 @@ fun ContactoItemCard(
                     )
                 }
 
-                // Botón para editar
                 IconButton(
                     onClick = onEditClick,
                     modifier = Modifier.size(32.dp)
@@ -1330,7 +1296,6 @@ fun ContactoItemCard(
                     )
                 }
 
-                // Botón para eliminar
                 IconButton(
                     onClick = onDeleteClick,
                     modifier = Modifier.size(32.dp)
@@ -1548,7 +1513,6 @@ fun VerDetalleContactoDialog(
     )
 }
 
-// Pantalla y Diálogo de Chat en Tiempo Real
 @Composable
 fun PantallaChatDialog(
     miTelefono: String,
@@ -1565,7 +1529,6 @@ fun PantallaChatDialog(
     val cleanMyPhone = miTelefono.trim()
     val cleanContactPhone = contactoTelefono.trim()
 
-    // Generar una ID de sala de chat determinista y única para ambos usuarios
     val chatRoomId = remember(cleanMyPhone, cleanContactPhone) {
         if (cleanMyPhone < cleanContactPhone) {
             "${cleanMyPhone}_${cleanContactPhone}"
@@ -1574,7 +1537,6 @@ fun PantallaChatDialog(
         }
     }
 
-    // Escuchar mensajes de la sala de chat en tiempo real
     DisposableEffect(chatRoomId) {
         if (chatRoomId.isBlank()) {
             isLoadingMensajes = false
@@ -1607,7 +1569,7 @@ fun PantallaChatDialog(
                     }
                 }
                 mensajes.clear()
-                mensajes.addAll(list) // Orden cronológico
+                mensajes.addAll(list)
                 isLoadingMensajes = false
             }
 
@@ -1625,7 +1587,6 @@ fun PantallaChatDialog(
 
     val listState = rememberLazyListState()
 
-    // Auto-desplazamiento al último mensaje cuando cambia la lista
     LaunchedEffect(mensajes.size) {
         if (mensajes.isNotEmpty()) {
             listState.animateScrollToItem(mensajes.size - 1)
@@ -1688,7 +1649,7 @@ fun PantallaChatDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Phone,
-                            contentDescription = "SMS Externo",
+                            contentDescription = "SMS",
                             tint = TextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1700,7 +1661,7 @@ fun PantallaChatDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar chat",
+                            contentDescription = "Cerrar",
                             tint = TextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1712,7 +1673,6 @@ fun PantallaChatDialog(
             Column(modifier = Modifier.fillMaxSize()) {
                 HorizontalDivider(color = BorderDark)
 
-                // Área Principal del Chat
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1803,7 +1763,6 @@ fun PantallaChatDialog(
                 HorizontalDivider(color = BorderDark)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Barra Inferior para Escribir y Enviar Mensajes
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1894,7 +1853,6 @@ private fun enviarMensajeChat(
         }
 }
 
-// Función auxiliar para enviar mensaje SMS externo
 private fun enviarMensajeSMS(context: Context, telefono: String, mensaje: String) {
     val cleanTel = telefono.trim()
     if (cleanTel.isBlank()) return
@@ -1906,7 +1864,7 @@ private fun enviarMensajeSMS(context: Context, telefono: String, mensaje: String
         }
         context.startActivity(intent)
     } catch (e: Exception) {
-        Log.e("SMS", "Error al abrir la aplicación de SMS", e)
+        Log.e("SMS", "Error al abrir SMS", e)
     }
 }
 
@@ -1973,7 +1931,6 @@ fun AgregarContactoDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                // Campo 1: Nombre del Contacto
                 OutlinedTextField(
                     value = nombre,
                     onValueChange = {
@@ -2000,11 +1957,10 @@ fun AgregarContactoDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Campo 2: Número de Teléfono
                 OutlinedTextField(
                     value = telefono,
-                    onValueChange = {
-                        telefono = it
+                    onValueChange = { input ->
+                        telefono = input.filter { char -> char.isDigit() || char == '+' }
                         if (errorMessage != null) errorMessage = null
                     },
                     label = { Text("Número de teléfono", color = TextSecondary) },
@@ -2028,7 +1984,6 @@ fun AgregarContactoDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Campo 3: Detalle o Nota del contacto
                 OutlinedTextField(
                     value = detalle,
                     onValueChange = {
@@ -2210,8 +2165,8 @@ fun EditarContactoDialog(
 
                 OutlinedTextField(
                     value = telefono,
-                    onValueChange = {
-                        telefono = it
+                    onValueChange = { input ->
+                        telefono = input.filter { char -> char.isDigit() || char == '+' }
                         if (errorMessage != null) errorMessage = null
                     },
                     label = { Text("Número de teléfono", color = TextSecondary) },
@@ -2299,7 +2254,6 @@ fun NotasContent(userPhone: String) {
 
     val cleanPhone = userPhone.trim()
 
-    // Escuchar notas en tiempo real
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoading = false
@@ -2334,7 +2288,7 @@ fun NotasContent(userPhone: String) {
                     }
                 }
                 notas.clear()
-                notas.addAll(list.reversed()) // Mostrar las más recientes primero
+                notas.addAll(list.reversed())
                 isLoading = false
             }
 
@@ -2350,7 +2304,6 @@ fun NotasContent(userPhone: String) {
         }
     }
 
-    // Formulario mejorado para agregar nota
     if (showAddDialog) {
         AgregarNotaDialog(
             onDismiss = { showAddDialog = false },
@@ -2361,7 +2314,6 @@ fun NotasContent(userPhone: String) {
         )
     }
 
-    // Diálogo para confirmar eliminación de nota
     if (notaToDelete != null) {
         AlertDialog(
             onDismissRequest = { notaToDelete = null },
@@ -2398,7 +2350,6 @@ fun NotasContent(userPhone: String) {
         )
     }
 
-    // Diálogo para consultar/ver la nota al tocarla
     if (selectedNotaForDetail != null) {
         VerDetalleNotaDialog(
             nota = selectedNotaForDetail!!,
@@ -2469,7 +2420,6 @@ fun NotasContent(userPhone: String) {
             }
         }
 
-        // Botón Flotante (FAB) para Agregar Nota
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = AppBlue,
@@ -2506,7 +2456,6 @@ fun NotaItemCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
-            // Franja de color indicador de categoría
             Box(
                 modifier = Modifier
                     .width(6.dp)
@@ -2519,7 +2468,6 @@ fun NotaItemCard(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // Fila superior: Chip de categoría + Botones de editar y eliminar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2568,7 +2516,6 @@ fun NotaItemCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Título de la nota
                 Text(
                     text = nota.titulo,
                     fontSize = 17.sp,
@@ -2578,7 +2525,6 @@ fun NotaItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Descripción de la nota
                 if (nota.descripcion.isNotBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -2589,7 +2535,6 @@ fun NotaItemCard(
                     )
                 }
 
-                // Fecha
                 if (nota.fecha.isNotBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -2677,7 +2622,6 @@ fun VerDetalleNotaDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 if (!isEditMode) {
-                    // MODO LECTURA / CONSULTA
                     Text(
                         text = if (nota.titulo.isBlank()) "Sin título" else nota.titulo,
                         fontSize = 22.sp,
@@ -2721,7 +2665,6 @@ fun VerDetalleNotaDialog(
                         )
                     }
                 } else {
-                    // MODO EDICIÓN
                     Text(
                         text = "Categoría:",
                         fontSize = 13.sp,
@@ -2969,7 +2912,6 @@ fun AgregarNotaDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                // Selector de Categoría
                 Text(
                     text = "Categoría:",
                     fontSize = 13.sp,
@@ -3025,7 +2967,6 @@ fun AgregarNotaDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Campo 1: Título de la Nota
                 OutlinedTextField(
                     value = titulo,
                     onValueChange = {
@@ -3062,7 +3003,6 @@ fun AgregarNotaDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Campo 2: Descripción de la Nota
                 OutlinedTextField(
                     value = descripcion,
                     onValueChange = {
@@ -3140,7 +3080,6 @@ fun AgregarNotaDialog(
     )
 }
 
-// Funciones auxiliares para sincronizar notas
 private fun guardarNotaEnBD(
     phone: String,
     titulo: String,
@@ -3164,7 +3103,6 @@ private fun guardarNotaEnBD(
         "colorHex" to colorHex
     )
 
-    // Guardar en la base de datos
     notesRef.child(noteId).setValue(noteMap)
         .addOnSuccessListener {
             try {
@@ -3226,7 +3164,6 @@ private fun eliminarNotaDeBD(phone: String, noteId: String) {
         }
 }
 
-// Funciones auxiliares de llamadas y registro
 private fun realizarYLlamadaYRegistrar(
     context: Context,
     userPhone: String,
@@ -3236,10 +3173,8 @@ private fun realizarYLlamadaYRegistrar(
     val cleanTel = telefonoDestino.trim()
     if (cleanTel.isBlank()) return
 
-    // Registrar llamada en la base de datos
     registrarLlamadaEnBD(userPhone, cleanTel, nombreContacto)
 
-    // Abrir marcador del celular
     try {
         val intent = android.content.Intent(
             android.content.Intent.ACTION_DIAL,
@@ -3308,7 +3243,6 @@ private fun vaciarHistorialDeBD(userPhone: String) {
     rtdb.getReference("usuarios").child(userPhone).child("llamadas").removeValue()
 }
 
-// Funciones auxiliares de contactos para la base de datos y agenda
 private fun guardarEnAgendaDelDispositivo(context: Context, nombre: String, telefono: String) {
     try {
         val intent = android.content.Intent(android.provider.ContactsContract.Intents.Insert.ACTION).apply {
@@ -3391,9 +3325,10 @@ private fun eliminarContactoDeBD(userPhone: String, contactId: String) {
         }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LlamadasContent(userPhone: String) {
-    var selectedSubTab by remember { mutableIntStateOf(0) } // 0: Marcador, 1: Historial
+    var selectedSubTab by remember { mutableIntStateOf(0) }
     var phoneNumber by remember { mutableStateOf("") }
     val context = LocalContext.current
     val cleanPhone = userPhone.trim()
@@ -3403,7 +3338,6 @@ fun LlamadasContent(userPhone: String) {
     var isLoadingHistorial by remember { mutableStateOf(true) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    // Cargar contactos guardados del usuario
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) return@DisposableEffect onDispose {}
 
@@ -3435,7 +3369,6 @@ fun LlamadasContent(userPhone: String) {
         }
     }
 
-    // Cargar historial de llamadas en tiempo real desde la base de datos
     DisposableEffect(cleanPhone) {
         if (cleanPhone.isBlank()) {
             isLoadingHistorial = false
@@ -3468,7 +3401,7 @@ fun LlamadasContent(userPhone: String) {
                     }
                 }
                 historialLlamadas.clear()
-                historialLlamadas.addAll(list.reversed()) // Mostrar las más recientes primero
+                historialLlamadas.addAll(list.reversed())
                 isLoadingHistorial = false
             }
 
@@ -3484,7 +3417,6 @@ fun LlamadasContent(userPhone: String) {
         }
     }
 
-    // Diálogo de confirmación para vaciar historial
     if (showClearHistoryDialog) {
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
@@ -3523,7 +3455,6 @@ fun LlamadasContent(userPhone: String) {
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // Selector de Pestaña Superior: Marcador vs Historial
         TabRow(
             selectedTabIndex = selectedSubTab,
             containerColor = CardBg,
@@ -3573,7 +3504,6 @@ fun LlamadasContent(userPhone: String) {
         Spacer(modifier = Modifier.height(8.dp))
 
         if (selectedSubTab == 0) {
-            // VISTA 1: MARCADOR TELEFÓNICO
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -3583,7 +3513,6 @@ fun LlamadasContent(userPhone: String) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Marcado Rápido de Contactos Guardados
                     if (contactos.isNotEmpty()) {
                         Text(
                             text = "Marcado Rápido:",
@@ -3638,7 +3567,6 @@ fun LlamadasContent(userPhone: String) {
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    // Campo de despliegue del número
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3682,7 +3610,6 @@ fun LlamadasContent(userPhone: String) {
                     )
                 }
 
-                // Teclado Numérico (Dial Pad)
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -3695,13 +3622,22 @@ fun LlamadasContent(userPhone: String) {
                         ) {
                             row.forEach { keyInfo ->
                                 Surface(
-                                    onClick = {
-                                        phoneNumber += keyInfo.number
-                                    },
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(CircleShape)
+                                        .combinedClickable(
+                                            onClick = {
+                                                phoneNumber += keyInfo.number
+                                            },
+                                            onLongClick = {
+                                                if (keyInfo.number == "0") {
+                                                    phoneNumber += "+"
+                                                }
+                                            }
+                                        ),
                                     shape = CircleShape,
                                     color = CardBg,
-                                    border = BorderStroke(1.dp, BorderDark),
-                                    modifier = Modifier.size(64.dp)
+                                    border = BorderStroke(1.dp, BorderDark)
                                 ) {
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -3729,7 +3665,6 @@ fun LlamadasContent(userPhone: String) {
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Botón verde para realizar la llamada y registrar en historial
                     Button(
                         onClick = {
                             val cleanTel = phoneNumber.trim()
@@ -3742,7 +3677,7 @@ fun LlamadasContent(userPhone: String) {
                         enabled = phoneNumber.isNotBlank(),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF22C55E), // Verde llamada
+                            containerColor = Color(0xFF22C55E),
                             disabledContainerColor = Color(0xFF162332)
                         ),
                         contentPadding = PaddingValues(0.dp),
@@ -3750,7 +3685,7 @@ fun LlamadasContent(userPhone: String) {
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Phone,
-                            contentDescription = "Realizar llamada",
+                            contentDescription = "Llamar",
                             tint = if (phoneNumber.isNotBlank()) Color.White else TextSecondary,
                             modifier = Modifier.size(30.dp)
                         )
@@ -3758,7 +3693,6 @@ fun LlamadasContent(userPhone: String) {
                 }
             }
         } else {
-            // VISTA 2: HISTORIAL DE LLAMADAS
             Column(modifier = Modifier.fillMaxSize()) {
                 if (historialLlamadas.isNotEmpty()) {
                     Row(
@@ -3889,7 +3823,6 @@ fun LlamadasContent(userPhone: String) {
                                     }
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        // Botón para devolver la llamada directamente
                                         IconButton(
                                             onClick = {
                                                 realizarYLlamadaYRegistrar(
